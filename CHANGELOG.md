@@ -20,3 +20,6 @@ Initial release.
 - Backed up all files managed by the fix and added restore support.
 - Preserved the original backup restore point across forced reinstalls.
 - Added a force-reinstall menu action. Increment `INSTALL_REVISION` when publishing a changed fix archive so installed copies are refreshed.
+- Launch actions now exit PBZ-Fix when the game closes instead of returning to the menu.
+- Routine actions no longer create Desktop logs; diagnostic reports are saved only when requested.
+- Documented the benign GE-Proton ProtonFixes warning seen with direct `proton run`.

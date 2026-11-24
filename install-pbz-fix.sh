@@ -605,57 +605,69 @@ show_status() {
 write_diagnostics() {
     local os_name="Unknown Linux"
     local backup_dir
+    local report_file
 
-    if [[ -r /etc/os-release ]]; then
-        # shellcheck disable=SC1091
-        . /etc/os-release
-        os_name="${PRETTY_NAME:-$os_name}"
-    fi
+    mkdir -p "$HOME/Desktop"
+    report_file="$(
+        mktemp --tmpdir="$HOME/Desktop" \
+            "PBZ-fix-diagnostics-$(date '+%Y%m%d-%H%M%S')-XXXXXX.txt"
+    )"
 
-    printf 'PBZ-Fix diagnostic report\n'
-    printf 'Generated: %s\n' "$(date --iso-8601=seconds)"
-    printf 'Script version: %s\n' "$SCRIPT_VERSION"
-    printf 'OS: %s\n' "$os_name"
-    printf 'Kernel: %s\n' "$(uname -sr)"
-    printf 'Bash: %s\n' "$BASH_VERSION"
-    printf 'User home: %s\n' "$HOME"
-    printf 'GitHub CLI installed: %s\n' "$(command -v gh || printf 'no')"
-    printf 'Curl installed: %s\n' "$(command -v curl || printf 'no')"
-    printf 'Unzip installed: %s\n' "$(command -v unzip || printf 'no')"
+    {
+        if [[ -r /etc/os-release ]]; then
+            # shellcheck disable=SC1091
+            . /etc/os-release
+            os_name="${PRETTY_NAME:-$os_name}"
+        fi
 
-    if detect_steam; then
-        printf 'Steam root: %s\n' "$STEAM_ROOT"
-        if find_game_directory; then
-            printf 'Game directory: %s\n' "$GAME_DIR"
-            if fix_is_installed; then
-                printf 'Fix state: installed and verified\n'
+        printf 'PBZ-Fix diagnostic report\n'
+        printf 'Generated: %s\n' "$(date --iso-8601=seconds)"
+        printf 'Script version: %s\n' "$SCRIPT_VERSION"
+        printf 'OS: %s\n' "$os_name"
+        printf 'Kernel: %s\n' "$(uname -sr)"
+        printf 'Bash: %s\n' "$BASH_VERSION"
+        printf 'User home: %s\n' "$HOME"
+        printf 'GitHub CLI installed: %s\n' "$(command -v gh || printf 'no')"
+        printf 'Curl installed: %s\n' "$(command -v curl || printf 'no')"
+        printf 'Unzip installed: %s\n' "$(command -v unzip || printf 'no')"
+
+        if detect_steam; then
+            printf 'Steam root: %s\n' "$STEAM_ROOT"
+            if find_game_directory; then
+                printf 'Game directory: %s\n' "$GAME_DIR"
+                if fix_is_installed; then
+                    printf 'Fix state: installed and verified\n'
+                else
+                    printf 'Fix state: missing, changed, or requires reinstall\n'
+                fi
             else
-                printf 'Fix state: missing, changed, or requires reinstall\n'
+                printf 'Game directory: not found\n'
             fi
         else
-            printf 'Game directory: not found\n'
+            printf 'Steam root: not found\n'
         fi
-    else
-        printf 'Steam root: not found\n'
-    fi
 
-    if find_newest_proton; then
-        printf 'GE-Proton: %s\n' "$PROTON"
-    else
-        printf 'GE-Proton: not found\n'
-    fi
+        if find_newest_proton; then
+            printf 'GE-Proton: %s\n' "$PROTON"
+        else
+            printf 'GE-Proton: not found\n'
+        fi
 
-    backup_dir="$(latest_backup)"
-    printf 'Latest backup: %s\n' "${backup_dir:-none}"
-    if [[ -f "$HOME/steam-$APP_ID.log" ]]; then
-        printf 'Proton log: %s\n' "$HOME/steam-$APP_ID.log"
-        stat -c 'Proton log modified: %y' "$HOME/steam-$APP_ID.log"
-    else
-        printf 'Proton log: not present\n'
-    fi
+        backup_dir="$(latest_backup)"
+        printf 'Latest backup: %s\n' "${backup_dir:-none}"
+        if [[ -f "$HOME/steam-$APP_ID.log" ]]; then
+            printf 'Proton log: %s\n' "$HOME/steam-$APP_ID.log"
+            stat -c 'Proton log modified: %y' "$HOME/steam-$APP_ID.log"
+        else
+            printf 'Proton log: not present\n'
+        fi
 
-    printf '\nDiagnostic logs do not include environment variables or Proton log contents.\n'
-    printf 'Review local paths/usernames before sharing this file.\n'
+        printf '\nDiagnostic logs do not include environment variables or Proton log contents.\n'
+        printf 'Review local paths/usernames before sharing this file.\n'
+    } > "$report_file"
+
+    cat "$report_file"
+    printf '\nDiagnostic report saved to: %s\n' "$report_file"
 }
 
 print_banner() {
@@ -671,26 +683,18 @@ BANNER
     printf 'Version %s\n\n' "$SCRIPT_VERSION"
 }
 
-run_logged_action() {
+run_action() {
     local action_name="$1"
-    local log_file
 
     shift
-    mkdir -p "$HOME/Desktop"
-    log_file="$(
-        mktemp --tmpdir="$HOME/Desktop" \
-            "PBZ-fix-$(date '+%Y%m%d-%H%M%S')-XXXXXX.log"
-    )"
-    printf 'Action log: %s\n' "$log_file"
-
-    exec 3>&1 4>&2
-    exec > >(tee -a "$log_file") 2>&1
     log "Starting: $action_name"
-    "$@"
-    log "Completed: $action_name"
-    exec 1>&3 2>&4
-    exec 3>&- 4>&-
-    printf 'Log saved to: %s\n' "$log_file"
+    if "$@"; then
+        log "Completed: $action_name"
+    else
+        local action_status=$?
+        log "FAILED: $action_name (exit code $action_status)"
+        return "$action_status"
+    fi
 }
 
 show_menu() {
@@ -714,13 +718,25 @@ show_menu() {
         fi
 
         case "$choice" in
-            1) run_logged_action "Install/update and launch" install_fix ;;
-            2) run_logged_action "Force reinstall/update and launch" force_install_fix ;;
-            3) run_logged_action "Launch game" launch_game ;;
-            4) run_logged_action "Launch with Proton logging" launch_game_with_log ;;
-            5) run_logged_action "Uninstall/restore" uninstall_fix ;;
-            6) run_logged_action "Diagnostic report" write_diagnostics ;;
-            7) run_logged_action "Status report" show_status ;;
+            1)
+                run_action "Install/update and launch" install_fix || return $?
+                return 0
+                ;;
+            2)
+                run_action "Force reinstall/update and launch" force_install_fix || return $?
+                return 0
+                ;;
+            3)
+                run_action "Launch game" launch_game || return $?
+                return 0
+                ;;
+            4)
+                run_action "Launch with Proton logging" launch_game_with_log || return $?
+                return 0
+                ;;
+            5) run_action "Uninstall/restore" uninstall_fix || log "Uninstall action failed." ;;
+            6) run_action "Diagnostic report" write_diagnostics || log "Diagnostic report failed." ;;
+            7) run_action "Status report" show_status || log "Status action failed." ;;
             0) log "Goodbye."; return 0 ;;
             *) log "Choose one of the listed options." ;;
         esac
@@ -741,16 +757,15 @@ main() {
     require_command date
     require_command sha256sum
     require_command sort
-    require_command tee
 
     case "${1:-}" in
-        --install) run_logged_action "Install/update and launch" install_fix ;;
-        --force-install) run_logged_action "Force reinstall/update and launch" force_install_fix ;;
-        --launch) run_logged_action "Launch game" launch_game ;;
-        --launch-log) run_logged_action "Launch with Proton logging" launch_game_with_log ;;
-        --uninstall) run_logged_action "Uninstall/restore" uninstall_fix ;;
-        --diagnostics) run_logged_action "Diagnostic report" write_diagnostics ;;
-        --status) run_logged_action "Status report" show_status ;;
+        --install) run_action "Install/update and launch" install_fix ;;
+        --force-install) run_action "Force reinstall/update and launch" force_install_fix ;;
+        --launch) run_action "Launch game" launch_game ;;
+        --launch-log) run_action "Launch with Proton logging" launch_game_with_log ;;
+        --uninstall) run_action "Uninstall/restore" uninstall_fix ;;
+        --diagnostics) run_action "Diagnostic report" write_diagnostics ;;
+        --status) run_action "Status report" show_status ;;
         --help|-h)
             printf 'Usage: %s [--install|--force-install|--launch|--launch-log|--uninstall|--diagnostics|--status]\n' "$0"
             printf 'With no option, show the interactive menu (or install when no terminal is available).\n'
@@ -760,7 +775,7 @@ main() {
                 show_menu
             else
                 log "No interactive terminal detected; installing and launching."
-                run_logged_action "Install/update and launch" install_fix
+                run_action "Install/update and launch" install_fix
             fi
             ;;
         *)

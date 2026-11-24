@@ -6,7 +6,7 @@ Run this one-liner to open the interactive menu:
 curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/54d961513c2e4acacf2f8af328a2bac45f0a141f/install-pbz-fix.sh | bash
 ```
 
-The menu can install/repair or force-reinstall the fix, launch the game, launch with Proton logging, restore original files to uninstall, create a diagnostic log, or show installation status. The first install backs up every file the fix will replace. Later install/repair selections verify those files and launch without downloading or reinstalling.
+The menu can install/repair or force-reinstall the fix, launch the game, launch with Proton logging, restore original files to uninstall, create a diagnostic report, or show installation status. After any launch option, PBZ-Fix exits when the game closes. The first install backs up every file the fix will replace. Later install/repair selections verify those files and launch without downloading or reinstalling.
 
 > **Requirements:** Linux, Steam with Phantom Blade Zero installed, GE-Proton installed in Steam's `compatibilitytools.d` directory, `curl`, and `unzip`. The installer searches `~/.local/share/Steam` and `~/.steam/steam`.
 
@@ -32,7 +32,9 @@ Choose **Uninstall/restore** from the menu to restore the original files and rem
 
 ## Logs
 
-Each action saves its output to a timestamped `PBZ-fix-*.log` file on the Desktop. Choose **Launch game with Proton logging** to also create `~/steam-4115450.log`. Diagnostic reports avoid environment variables and Proton log contents, but include local paths/usernames; review them before sharing.
+Routine actions do not create log files. Choose **Create diagnostic log on Desktop** to save a shareable system and install report. Choose **Launch game with Proton logging** to ask Proton to create `~/steam-4115450.log`. Diagnostic reports avoid environment variables and Proton log contents, but include local paths/usernames; review them before sharing.
+
+GE-Proton may print `ProtonFixes ... Skipping fix execution. We are probably running a unit test.` This is a warning from GE-Proton's ProtonFixes component: its game-specific hooks expect Steam's `waitforexitandrun` launch verb, while PBZ-Fix uses the requested direct `proton run` launch. It does not mean PBZ-Fix is running a test, and it did not prevent the game from opening in the reported run.
 
 ## Support
 
