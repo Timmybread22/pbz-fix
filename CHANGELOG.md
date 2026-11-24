@@ -11,3 +11,4 @@ Initial release.
 ### Installer update — 2026-11-24
 
 - Fixed downloading the latest release when the GitHub CLI is installed and authenticated.
+- Pinned the README install command to this installer revision to avoid stale content served for the moving `main` URL.
