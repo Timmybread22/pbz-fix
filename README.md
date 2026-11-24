@@ -10,6 +10,10 @@ The installer downloads and validates the fix, backs up existing game files, ins
 
 > **Requirements:** Linux, Steam with Phantom Blade Zero installed, GE-Proton installed in Steam's `compatibilitytools.d` directory, `curl`, and `unzip`. The installer searches `~/.local/share/Steam` and `~/.steam/steam`.
 
+## Patch notes
+
+See [CHANGELOG.md](CHANGELOG.md) for installer and release updates.
+
 ## Backups
 
 Existing `platform/steam/PBZ.exe` and `platform/steam/steam_api64.dll` files are backed up to `~/pbz-backup-YYYYMMDD-HHMMSS`.
