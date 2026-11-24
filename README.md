@@ -6,6 +6,8 @@ Run this one-liner to open the interactive menu:
 curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/3d2acfd326d65836422bcccbc968d9e8c895d92e/install-pbz-fix.sh | bash
 ```
 
+Run it from a Linux terminal emulator. PBZ-Fix displays a numbered terminal menu and reads your selection there; it is not a graphical window. The terminal stays available for menu actions, and the manager exits after the game closes.
+
 The menu can install/repair or force-reinstall the fix, launch the game, launch with Proton logging, restore original files to uninstall, create a diagnostic report, or show installation status. After any launch option, PBZ-Fix exits when the game closes. The first install backs up every file the fix will replace. Later install/repair selections verify those files and launch without downloading or reinstalling.
 
 > **Requirements:** Linux, Steam with Phantom Blade Zero installed, GE-Proton installed in Steam's `compatibilitytools.d` directory, `curl`, and `unzip`. The installer searches `~/.local/share/Steam` and `~/.steam/steam`.

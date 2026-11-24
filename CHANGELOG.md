@@ -23,3 +23,4 @@ Initial release.
 - Launch actions now exit PBZ-Fix when the game closes instead of returning to the menu.
 - Routine actions no longer create Desktop logs; diagnostic reports are saved only when requested.
 - Documented the benign GE-Proton ProtonFixes warning seen with direct `proton run`.
+- Simplified the terminal banner for clearer, consistent display.

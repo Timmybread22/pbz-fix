@@ -672,13 +672,10 @@ write_diagnostics() {
 
 print_banner() {
     cat <<'BANNER'
- ____  ____ ______      _____ _ _
-|  _ \| __ )__  /      |  ___(_|_)
-| |_) |  _ \ / / _____ | |_   | |
-|  __/| |_) / /_|_____| |  _|  | |
-|_|   |____/____|       |_|    |_|
-                 PBZ-FIX
-          PHANTOM BLADE ZERO TOOL
++--------------------------------------------------+
+|                    PBZ-FIX                       |
+|          PHANTOM BLADE ZERO FIX MANAGER          |
++--------------------------------------------------+
 BANNER
     printf 'Version %s\n\n' "$SCRIPT_VERSION"
 }
