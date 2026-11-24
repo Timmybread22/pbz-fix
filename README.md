@@ -3,7 +3,7 @@
 Run this one-liner to open the interactive menu:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/3d2acfd326d65836422bcccbc968d9e8c895d92e/install-pbz-fix.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/4e270a7652832a4ab16ccc8fdced965507a6c6f9/install-pbz-fix.sh | bash
 ```
 
 Run it from a Linux terminal emulator. PBZ-Fix displays a numbered terminal menu and reads your selection there; it is not a graphical window. The terminal stays available for menu actions, and the manager exits after the game closes.
@@ -15,7 +15,7 @@ The menu can install/repair or force-reinstall the fix, launch the game, launch 
 With no interactive terminal, the command automatically installs/updates the fix and launches the game. To force a fresh download and reinstall:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/3d2acfd326d65836422bcccbc968d9e8c895d92e/install-pbz-fix.sh | FORCE_INSTALL=1 bash
+curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/4e270a7652832a4ab16ccc8fdced965507a6c6f9/install-pbz-fix.sh | FORCE_INSTALL=1 bash
 ```
 
 For direct actions, pass `--force-install`, `--launch`, `--launch-log`, `--uninstall`, `--diagnostics`, or `--status` to the script.
