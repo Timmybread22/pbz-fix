@@ -5,7 +5,7 @@ set -euo pipefail
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
-FIX_ASSET="${FIX_ASSET:-Phantom Blade Zero FIX.zip}"
+FIX_ASSET="${FIX_ASSET:-Phantom.Blade.Zero.FIX.zip}"
 FIX_ZIP="${FIX_ZIP:-}"
 
 TEMP_DIR=""
