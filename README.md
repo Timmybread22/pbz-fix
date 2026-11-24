@@ -22,8 +22,6 @@ PBZ-Fix opens a numbered menu in the terminal. It is not a graphical app; keep t
 6. **Diagnostic log** — Saves a system and install report to your Desktop.
 7. **Status** — Shows Steam, game, GE-Proton, and fix status.
 
-With no interactive terminal, the command defaults to installing/repairing and launching the game.
-
 > **Requirements:** Linux, Steam with Phantom Blade Zero installed, GE-Proton in Steam's `compatibilitytools.d` directory, `curl`, and `unzip`. Steam is detected in `~/.local/share/Steam` or `~/.steam/steam`.
 
 ## Backups and uninstall
