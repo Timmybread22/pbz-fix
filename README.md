@@ -3,7 +3,7 @@
 Install the fix on the first run; later runs verify the installed files and launch the game without downloading or reinstalling:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/57e042a31d6446b80bfe82375c5867605ff67987/install-pbz-fix.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/5fcd1ff5caa5f70f40c6070bd9314bb7546d1889/install-pbz-fix.sh | bash
 ```
 
 The installer downloads and validates the fix, backs up existing game files, installs it, verifies `PBZ.exe`, and launches the game through the newest installed GE-Proton version.
@@ -13,7 +13,7 @@ The installer downloads and validates the fix, backs up existing game files, ins
 To force a fresh download and reinstall:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/57e042a31d6446b80bfe82375c5867605ff67987/install-pbz-fix.sh | FORCE_INSTALL=1 bash
+curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/5fcd1ff5caa5f70f40c6070bd9314bb7546d1889/install-pbz-fix.sh | FORCE_INSTALL=1 bash
 ```
 
 ## Patch notes
