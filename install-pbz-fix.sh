@@ -7,6 +7,7 @@ FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
 FIX_ASSET="${FIX_ASSET:-Phantom.Blade.Zero.FIX.zip}"
 FIX_ZIP="${FIX_ZIP:-}"
+INSTALL_REVISION="2"
 
 TEMP_DIR=""
 STEAM_ROOT=""
@@ -261,6 +262,10 @@ create_backups() {
 }
 
 extract_and_install() {
+    if [[ -z "$TEMP_DIR" ]]; then
+        TEMP_DIR="$(mktemp -d)"
+    fi
+
     local extract_dir="$TEMP_DIR/extracted"
     mkdir -p "$extract_dir"
 
@@ -279,6 +284,48 @@ extract_and_install() {
     cp -a -- "$extract_dir/platform/." "$GAME_DIR/platform/"
 }
 
+fix_is_installed() {
+    local revision_file="$GAME_DIR/.pbz-fix-install-revision"
+    local manifest_file="$GAME_DIR/.pbz-fix-files.sha256"
+    local installed_revision
+
+    [[ "${FORCE_INSTALL:-0}" != "1" ]] || return 1
+    [[ -f "$revision_file" && -f "$manifest_file" ]] || return 1
+    [[ -f "$GAME_DIR/platform/steam/PBZ.exe" ]] || return 1
+
+    IFS= read -r installed_revision < "$revision_file" || return 1
+    [[ "$installed_revision" == "$INSTALL_REVISION" ]] || return 1
+
+    (cd "$GAME_DIR" && sha256sum --check --status "$manifest_file")
+}
+
+write_install_manifest() {
+    local extract_dir="$1"
+    local manifest_file="$GAME_DIR/.pbz-fix-files.sha256"
+    local revision_file="$GAME_DIR/.pbz-fix-install-revision"
+    local manifest_temp="$manifest_file.tmp.$$"
+    local revision_temp="$revision_file.tmp.$$"
+    local relative_path
+
+    (
+        cd "$GAME_DIR"
+        while IFS= read -r -d '' relative_path; do
+            sha256sum -- "$relative_path"
+        done < <(
+            cd "$extract_dir"
+            find steam platform -type f -print0 | sort -z
+        )
+    ) > "$manifest_temp" ||
+        fail "Failed to write the fix integrity manifest."
+
+    [[ -s "$manifest_temp" ]] ||
+        fail "The extracted fix contains no files to verify."
+
+    printf '%s\n' "$INSTALL_REVISION" > "$revision_temp"
+    mv -- "$manifest_temp" "$manifest_file"
+    mv -- "$revision_temp" "$revision_file"
+}
+
 main() {
     require_command unzip
     require_command find
@@ -289,6 +336,8 @@ main() {
     require_command grep
     require_command mktemp
     require_command date
+    require_command sha256sum
+    require_command sort
 
     if ! detect_steam; then
         fail "Steam could not be found."
@@ -304,25 +353,30 @@ main() {
 
     log "Using GE-Proton: $PROTON"
 
-    log "Downloading or locating the fix archive..."
-    download_fix
-
-    log "Validating fix ZIP..."
-    validate_zip
-    log "Fix ZIP validation passed."
-
-    log "Creating backups..."
-    create_backups
-
-    log "Extracting and installing fix..."
-    extract_and_install
-
     local executable="$GAME_DIR/platform/steam/PBZ.exe"
 
-    [[ -f "$executable" ]] ||
-        fail "Post-install verification failed: $executable does not exist."
+    if fix_is_installed; then
+        log "Fix is already installed and verified; skipping download and installation."
+    else
+        log "Downloading or locating the fix archive..."
+        download_fix
 
-    log "Post-install verification passed."
+        log "Validating fix ZIP..."
+        validate_zip
+        log "Fix ZIP validation passed."
+
+        log "Creating backups..."
+        create_backups
+
+        log "Extracting and installing fix..."
+        extract_and_install
+
+        [[ -f "$executable" ]] ||
+            fail "Post-install verification failed: $executable does not exist."
+
+        write_install_manifest "$TEMP_DIR/extracted"
+        log "Post-install verification passed."
+    fi
 
     export STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_ROOT"
     export STEAM_COMPAT_DATA_PATH="$STEAM_ROOT/steamapps/compatdata/$APP_ID"

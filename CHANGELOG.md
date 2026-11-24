@@ -12,3 +12,6 @@ Initial release.
 
 - Fixed downloading the latest release when the GitHub CLI is installed and authenticated.
 - Pinned the README install command to this installer revision to avoid stale content served for the moving `main` URL.
+- Added install verification so repeat runs launch the game without downloading or reinstalling the fix.
+- Added `FORCE_INSTALL=1` to force a fresh install.
+- Fixed temporary extraction when using a locally supplied archive.
