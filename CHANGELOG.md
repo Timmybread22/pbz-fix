@@ -15,3 +15,8 @@ Initial release.
 - Added install verification so repeat runs launch the game without downloading or reinstalling the fix.
 - Added `FORCE_INSTALL=1` to force a fresh install.
 - Fixed temporary extraction when using a locally supplied archive.
+- Added an interactive menu for install/update, launch, uninstall/restore, status, and diagnostics.
+- Added per-action Desktop logs and an optional Proton debug-log launch.
+- Backed up all files managed by the fix and added restore support.
+- Preserved the original backup restore point across forced reinstalls.
+- Added a force-reinstall menu action. Increment `INSTALL_REVISION` when publishing a changed fix archive so installed copies are refreshed.

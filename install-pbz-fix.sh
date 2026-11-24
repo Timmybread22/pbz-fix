@@ -2,12 +2,13 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
+SCRIPT_VERSION="2.0"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
 FIX_ASSET="${FIX_ASSET:-Phantom.Blade.Zero.FIX.zip}"
 FIX_ZIP="${FIX_ZIP:-}"
-INSTALL_REVISION="2"
+INSTALL_REVISION="3"
 
 TEMP_DIR=""
 STEAM_ROOT=""
@@ -27,6 +28,7 @@ cleanup() {
     if [[ -n "${TEMP_DIR:-}" && -d "$TEMP_DIR" ]]; then
         rm -rf -- "$TEMP_DIR"
     fi
+    TEMP_DIR=""
 }
 
 trap cleanup EXIT
@@ -216,12 +218,15 @@ validate_zip() {
     mapfile -t entries < <(unzip -Z1 "$FIX_ZIP" 2>/dev/null)
 
     for entry in "${entries[@]}"; do
-        if [[ "$entry" == /* ||
-              "$entry" == "../"* ||
-              "$entry" == *"/../"* ||
-              "$entry" == *"\\"* ]]; then
+        if [[ "$entry" == /* || "$entry" == *"\\"* ]]; then
             fail "Fix ZIP contains an unsafe path: $entry"
         fi
+
+        case "/$entry/" in
+            *"/../"*)
+                fail "Fix ZIP contains an unsafe path: $entry"
+                ;;
+        esac
     done
 
     printf '%s\n' "${entries[@]}" |
@@ -234,31 +239,61 @@ validate_zip() {
 }
 
 create_backups() {
+    local extract_dir="$1"
     local timestamp
     local backup_dir
+    local prior_backup
+    local original_backup
+    local backup_pointer="$GAME_DIR/.pbz-fix-original-backup"
+    local backup_pointer_temp="$backup_pointer.tmp.$$"
     local source
     local destination
-    local -a files=(
-        "platform/steam/PBZ.exe"
-        "platform/steam/steam_api64.dll"
-    )
 
+    prior_backup="$(latest_backup)"
     timestamp="$(date '+%Y%m%d-%H%M%S')"
     backup_dir="$HOME/pbz-backup-$timestamp"
-    mkdir -p "$backup_dir"
+    if ! mkdir -- "$backup_dir" 2>/dev/null; then
+        backup_dir="$(mktemp -d "$HOME/pbz-backup-$timestamp-XXXXXX")" ||
+            fail "Could not create a unique backup directory."
+    fi
 
-    for source in "${files[@]}"; do
-        if [[ -f "$GAME_DIR/$source" ]]; then
+    (
+        cd "$extract_dir"
+        find steam platform -type f -print0 | sort -z
+    ) > "$backup_dir/.pbz-fix-managed-files.nul" ||
+        fail "Failed to record the fix files for uninstall."
+
+    while IFS= read -r -d '' source; do
+        if [[ -f "$GAME_DIR/$source" || -L "$GAME_DIR/$source" ]]; then
             destination="$backup_dir/$source"
             mkdir -p "$(dirname "$destination")"
             cp -a -- "$GAME_DIR/$source" "$destination"
             log "Backed up $GAME_DIR/$source"
-        else
-            log "Original file not present; skipping backup: $GAME_DIR/$source"
         fi
-    done
+    done < "$backup_dir/.pbz-fix-managed-files.nul"
 
+    original_backup="$backup_dir"
+    if [[ -r "$backup_pointer" ]]; then
+        IFS= read -r original_backup < "$backup_pointer" || original_backup=""
+    elif [[ -n "$prior_backup" && -d "$prior_backup" ]]; then
+        original_backup="$prior_backup"
+    fi
+
+    case "$original_backup" in
+        "$HOME"/pbz-backup-*)
+            if [[ ! -d "$original_backup" ]]; then
+                original_backup="$backup_dir"
+            fi
+            ;;
+        *)
+            original_backup="$backup_dir"
+            ;;
+    esac
+
+    printf '%s\n' "$original_backup" > "$backup_pointer_temp"
+    mv -- "$backup_pointer_temp" "$backup_pointer"
     log "Backup directory: $backup_dir"
+    log "Original restore point: $original_backup"
 }
 
 extract_and_install() {
@@ -277,6 +312,8 @@ extract_and_install() {
 
     [[ -d "$extract_dir/platform" ]] ||
         fail "Extracted archive is missing the platform/ folder."
+
+    create_backups "$extract_dir"
 
     mkdir -p "$GAME_DIR/steam" "$GAME_DIR/platform"
 
@@ -326,6 +363,372 @@ write_install_manifest() {
     mv -- "$revision_temp" "$revision_file"
 }
 
+prepare_game() {
+    if ! detect_steam; then
+        fail "Steam could not be found."
+    fi
+
+    if ! find_game_directory; then
+        fail "Phantom Blade Zero is not installed."
+    fi
+}
+
+prepare_runtime() {
+    prepare_game
+    if ! find_newest_proton; then
+        fail "No installed GE-Proton installation was found."
+    fi
+
+    log "Using GE-Proton: $PROTON"
+}
+
+launch_detected_game() {
+    local executable="$GAME_DIR/platform/steam/PBZ.exe"
+    local windows_path
+    local launch_status=0
+
+    [[ -f "$executable" ]] ||
+        fail "Game executable not found: $executable"
+
+    export STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_ROOT"
+    export STEAM_COMPAT_DATA_PATH="$STEAM_ROOT/steamapps/compatdata/$APP_ID"
+    export SteamAppId="$APP_ID"
+    export SteamGameId="$APP_ID"
+    mkdir -p "$STEAM_COMPAT_DATA_PATH"
+
+    cd "$GAME_DIR/platform/steam"
+    windows_path="Z:${executable//\//\\}"
+
+    if "$PROTON" run "$windows_path"; then
+        log "Game exited successfully."
+        return 0
+    else
+        launch_status=$?
+    fi
+
+    printf '%s\n' \
+        "The game exited unexpectedly." \
+        "To collect a Proton log, launch with PROTON_LOG=1 and inspect:" \
+        "$HOME/steam-$APP_ID.log"
+    return "$launch_status"
+}
+
+install_fix() {
+    prepare_runtime
+
+    if fix_is_installed; then
+        log "Fix is already installed and verified; skipping download and installation."
+    else
+        log "Downloading or locating the fix archive..."
+        download_fix
+
+        log "Validating fix ZIP..."
+        validate_zip
+        log "Fix ZIP validation passed."
+
+        log "Extracting, backing up, and installing fix..."
+        extract_and_install
+
+        [[ -f "$GAME_DIR/platform/steam/PBZ.exe" ]] ||
+            fail "Post-install verification failed: $GAME_DIR/platform/steam/PBZ.exe does not exist."
+
+        write_install_manifest "$TEMP_DIR/extracted"
+        log "Post-install verification passed."
+    fi
+
+    launch_detected_game
+    cleanup
+}
+
+force_install_fix() {
+    FORCE_INSTALL=1 install_fix
+}
+
+launch_game() {
+    prepare_runtime
+    launch_detected_game
+}
+
+launch_game_with_log() {
+    export PROTON_LOG=1
+    log "Proton logging enabled for this launch."
+    launch_game
+}
+
+latest_backup() {
+    local -a backups=()
+
+    while IFS= read -r -d '' backup; do
+        backups+=("$backup")
+    done < <(
+        find "$HOME" \
+            -maxdepth 1 \
+            -mindepth 1 \
+            -type d \
+            -name 'pbz-backup-*' \
+            -print0 |
+            sort -z
+    )
+
+    if ((${#backups[@]} > 0)); then
+        printf '%s' "${backups[${#backups[@]}-1]}"
+    fi
+}
+
+confirm_action() {
+    local prompt="$1"
+    local answer
+
+    [[ -r /dev/tty ]] ||
+        fail "This action requires an interactive terminal."
+
+    IFS= read -r -p "$prompt [y/N] " answer </dev/tty || return 1
+    [[ "${answer,,}" == "y" || "${answer,,}" == "yes" ]]
+}
+
+uninstall_fix() {
+    local backup_dir=""
+    local backup_pointer
+    local managed_list
+    local relative_path
+    local backup_file
+    local game_file
+    local -a fallback_files=(
+        "platform/steam/PBZ.exe"
+        "platform/steam/steam_api64.dll"
+    )
+
+    prepare_game
+    backup_pointer="$GAME_DIR/.pbz-fix-original-backup"
+    if [[ -r "$backup_pointer" ]]; then
+        IFS= read -r backup_dir < "$backup_pointer" || backup_dir=""
+        case "$backup_dir" in
+            "$HOME"/pbz-backup-*)
+                [[ -d "$backup_dir" ]] || backup_dir=""
+                ;;
+            *)
+                backup_dir=""
+                ;;
+        esac
+    fi
+
+    if [[ -z "$backup_dir" ]]; then
+        backup_dir="$(latest_backup)"
+    fi
+
+    [[ -n "$backup_dir" ]] ||
+        fail "No PBZ backup directory was found under $HOME."
+
+    log "Selected backup: $backup_dir"
+    if ! confirm_action "Restore this backup and remove the fix files?"; then
+        log "Uninstall cancelled."
+        return 0
+    fi
+
+    managed_list="$backup_dir/.pbz-fix-managed-files.nul"
+    if [[ -f "$managed_list" ]]; then
+        while IFS= read -r -d '' relative_path; do
+            if [[ "$relative_path" != steam/* &&
+                  "$relative_path" != platform/* ]]; then
+                fail "Backup contains an invalid managed path: $relative_path"
+            fi
+
+            backup_file="$backup_dir/$relative_path"
+            game_file="$GAME_DIR/$relative_path"
+
+            if [[ -f "$backup_file" || -L "$backup_file" ]]; then
+                mkdir -p "$(dirname "$game_file")"
+                cp -a -- "$backup_file" "$game_file"
+                log "Restored $relative_path"
+            elif [[ -f "$game_file" || -L "$game_file" ]]; then
+                rm -f -- "$game_file"
+                log "Removed fix-added file $relative_path"
+            fi
+        done < "$managed_list"
+    else
+        log "WARNING: This is a legacy backup; restoring only the files it contains."
+        log "Other files added by the fix may remain in the game folder."
+        for relative_path in "${fallback_files[@]}"; do
+            backup_file="$backup_dir/$relative_path"
+            if [[ -f "$backup_file" || -L "$backup_file" ]]; then
+                game_file="$GAME_DIR/$relative_path"
+                mkdir -p "$(dirname "$game_file")"
+                cp -a -- "$backup_file" "$game_file"
+                log "Restored $relative_path"
+            fi
+        done
+    fi
+
+    rm -f -- \
+        "$GAME_DIR/.pbz-fix-install-revision" \
+        "$GAME_DIR/.pbz-fix-files.sha256" \
+        "$GAME_DIR/.pbz-fix-original-backup"
+    log "Uninstall/restore completed. Backup retained at $backup_dir"
+}
+
+show_status() {
+    printf 'PBZ-Fix version: %s\n' "$SCRIPT_VERSION"
+
+    if detect_steam; then
+        printf 'Steam: %s\n' "$STEAM_ROOT"
+        if find_game_directory; then
+            printf 'Game: %s\n' "$GAME_DIR"
+            if fix_is_installed; then
+                printf 'Fix: installed and verified\n'
+            elif [[ -e "$GAME_DIR/.pbz-fix-install-revision" ]]; then
+                printf 'Fix: marker found, but files need repair or reinstall\n'
+            else
+                printf 'Fix: not installed by this installer\n'
+            fi
+        else
+            printf 'Game: not found\n'
+        fi
+    else
+        printf 'Steam: not found in standard locations\n'
+    fi
+
+    if find_newest_proton; then
+        printf 'GE-Proton: %s\n' "$PROTON"
+    else
+        printf 'GE-Proton: not found\n'
+    fi
+
+    local backup_dir
+    backup_dir="$(latest_backup)"
+    if [[ -n "$backup_dir" ]]; then
+        printf 'Latest backup: %s\n' "$backup_dir"
+    else
+        printf 'Latest backup: none\n'
+    fi
+}
+
+write_diagnostics() {
+    local os_name="Unknown Linux"
+    local backup_dir
+
+    if [[ -r /etc/os-release ]]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        os_name="${PRETTY_NAME:-$os_name}"
+    fi
+
+    printf 'PBZ-Fix diagnostic report\n'
+    printf 'Generated: %s\n' "$(date --iso-8601=seconds)"
+    printf 'Script version: %s\n' "$SCRIPT_VERSION"
+    printf 'OS: %s\n' "$os_name"
+    printf 'Kernel: %s\n' "$(uname -sr)"
+    printf 'Bash: %s\n' "$BASH_VERSION"
+    printf 'User home: %s\n' "$HOME"
+    printf 'GitHub CLI installed: %s\n' "$(command -v gh || printf 'no')"
+    printf 'Curl installed: %s\n' "$(command -v curl || printf 'no')"
+    printf 'Unzip installed: %s\n' "$(command -v unzip || printf 'no')"
+
+    if detect_steam; then
+        printf 'Steam root: %s\n' "$STEAM_ROOT"
+        if find_game_directory; then
+            printf 'Game directory: %s\n' "$GAME_DIR"
+            if fix_is_installed; then
+                printf 'Fix state: installed and verified\n'
+            else
+                printf 'Fix state: missing, changed, or requires reinstall\n'
+            fi
+        else
+            printf 'Game directory: not found\n'
+        fi
+    else
+        printf 'Steam root: not found\n'
+    fi
+
+    if find_newest_proton; then
+        printf 'GE-Proton: %s\n' "$PROTON"
+    else
+        printf 'GE-Proton: not found\n'
+    fi
+
+    backup_dir="$(latest_backup)"
+    printf 'Latest backup: %s\n' "${backup_dir:-none}"
+    if [[ -f "$HOME/steam-$APP_ID.log" ]]; then
+        printf 'Proton log: %s\n' "$HOME/steam-$APP_ID.log"
+        stat -c 'Proton log modified: %y' "$HOME/steam-$APP_ID.log"
+    else
+        printf 'Proton log: not present\n'
+    fi
+
+    printf '\nDiagnostic logs do not include environment variables or Proton log contents.\n'
+    printf 'Review local paths/usernames before sharing this file.\n'
+}
+
+print_banner() {
+    cat <<'BANNER'
+ ____  ____ ______      _____ _ _
+|  _ \| __ )__  /      |  ___(_|_)
+| |_) |  _ \ / / _____ | |_   | |
+|  __/| |_) / /_|_____| |  _|  | |
+|_|   |____/____|       |_|    |_|
+                 PBZ-FIX
+          PHANTOM BLADE ZERO TOOL
+BANNER
+    printf 'Version %s\n\n' "$SCRIPT_VERSION"
+}
+
+run_logged_action() {
+    local action_name="$1"
+    local log_file
+
+    shift
+    mkdir -p "$HOME/Desktop"
+    log_file="$(
+        mktemp --tmpdir="$HOME/Desktop" \
+            "PBZ-fix-$(date '+%Y%m%d-%H%M%S')-XXXXXX.log"
+    )"
+    printf 'Action log: %s\n' "$log_file"
+
+    exec 3>&1 4>&2
+    exec > >(tee -a "$log_file") 2>&1
+    log "Starting: $action_name"
+    "$@"
+    log "Completed: $action_name"
+    exec 1>&3 2>&4
+    exec 3>&- 4>&-
+    printf 'Log saved to: %s\n' "$log_file"
+}
+
+show_menu() {
+    local choice
+
+    while true; do
+        print_banner
+        printf '%s\n' \
+            "1) Install/repair fix and launch game" \
+            "2) Force reinstall/update and launch" \
+            "3) Launch game" \
+            "4) Launch game with Proton logging" \
+            "5) Uninstall/restore original files" \
+            "6) Create diagnostic log on Desktop" \
+            "7) Show installation status" \
+            "0) Exit"
+
+        if ! IFS= read -r -p $'\nSelect an option: ' choice </dev/tty; then
+            log "Could not read menu selection."
+            return 1
+        fi
+
+        case "$choice" in
+            1) run_logged_action "Install/update and launch" install_fix ;;
+            2) run_logged_action "Force reinstall/update and launch" force_install_fix ;;
+            3) run_logged_action "Launch game" launch_game ;;
+            4) run_logged_action "Launch with Proton logging" launch_game_with_log ;;
+            5) run_logged_action "Uninstall/restore" uninstall_fix ;;
+            6) run_logged_action "Diagnostic report" write_diagnostics ;;
+            7) run_logged_action "Status report" show_status ;;
+            0) log "Goodbye."; return 0 ;;
+            *) log "Choose one of the listed options." ;;
+        esac
+
+        printf '\n'
+    done
+}
+
 main() {
     require_command unzip
     require_command find
@@ -338,75 +741,32 @@ main() {
     require_command date
     require_command sha256sum
     require_command sort
+    require_command tee
 
-    if ! detect_steam; then
-        fail "Steam could not be found."
-    fi
-
-    if ! find_game_directory; then
-        fail "Phantom Blade Zero is not installed."
-    fi
-
-    if ! find_newest_proton; then
-        fail "No installed GE-Proton installation was found."
-    fi
-
-    log "Using GE-Proton: $PROTON"
-
-    local executable="$GAME_DIR/platform/steam/PBZ.exe"
-
-    if fix_is_installed; then
-        log "Fix is already installed and verified; skipping download and installation."
-    else
-        log "Downloading or locating the fix archive..."
-        download_fix
-
-        log "Validating fix ZIP..."
-        validate_zip
-        log "Fix ZIP validation passed."
-
-        log "Creating backups..."
-        create_backups
-
-        log "Extracting and installing fix..."
-        extract_and_install
-
-        [[ -f "$executable" ]] ||
-            fail "Post-install verification failed: $executable does not exist."
-
-        write_install_manifest "$TEMP_DIR/extracted"
-        log "Post-install verification passed."
-    fi
-
-    export STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_ROOT"
-    export STEAM_COMPAT_DATA_PATH="$STEAM_ROOT/steamapps/compatdata/$APP_ID"
-    export SteamAppId="$APP_ID"
-    export SteamGameId="$APP_ID"
-
-    mkdir -p "$STEAM_COMPAT_DATA_PATH"
-
-    cd "$GAME_DIR/platform/steam"
-
-    local windows_path
-    windows_path="Z:${executable//\//\\}"
-
-    local launch_status
-    set +e
-    "$PROTON" run "$windows_path"
-    launch_status=$?
-    set -e
-
-    if (( launch_status != 0)); then
-        printf '%s\n' \
-            "The game exited unexpectedly." \
-            "Try rerunning with:" \
-            "PROTON_LOG=1" \
-            "Then inspect:" \
-            "~/steam-4115450.log"
-        exit "$launch_status"
-    fi
-
-    log "Success: Phantom Blade Zero fix was installed and launched."
+    case "${1:-}" in
+        --install) run_logged_action "Install/update and launch" install_fix ;;
+        --force-install) run_logged_action "Force reinstall/update and launch" force_install_fix ;;
+        --launch) run_logged_action "Launch game" launch_game ;;
+        --launch-log) run_logged_action "Launch with Proton logging" launch_game_with_log ;;
+        --uninstall) run_logged_action "Uninstall/restore" uninstall_fix ;;
+        --diagnostics) run_logged_action "Diagnostic report" write_diagnostics ;;
+        --status) run_logged_action "Status report" show_status ;;
+        --help|-h)
+            printf 'Usage: %s [--install|--force-install|--launch|--launch-log|--uninstall|--diagnostics|--status]\n' "$0"
+            printf 'With no option, show the interactive menu (or install when no terminal is available).\n'
+            ;;
+        "")
+            if [[ -r /dev/tty ]]; then
+                show_menu
+            else
+                log "No interactive terminal detected; installing and launching."
+                run_logged_action "Install/update and launch" install_fix
+            fi
+            ;;
+        *)
+            fail "Unknown option: $1 (use --help for usage)."
+            ;;
+    esac
 }
 
 main "$@"

@@ -1,20 +1,22 @@
 # ⚔️ Phantom Blade Zero Fix for Linux
 
-Install the fix on the first run; later runs verify the installed files and launch the game without downloading or reinstalling:
+Run this one-liner to open the interactive menu:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/5fcd1ff5caa5f70f40c6070bd9314bb7546d1889/install-pbz-fix.sh | bash
 ```
 
-The installer downloads and validates the fix, backs up existing game files, installs it, verifies `PBZ.exe`, and launches the game through the newest installed GE-Proton version.
+The menu can install/repair or force-reinstall the fix, launch the game, launch with Proton logging, restore original files to uninstall, create a diagnostic log, or show installation status. The first install backs up every file the fix will replace. Later install/repair selections verify those files and launch without downloading or reinstalling.
 
 > **Requirements:** Linux, Steam with Phantom Blade Zero installed, GE-Proton installed in Steam's `compatibilitytools.d` directory, `curl`, and `unzip`. The installer searches `~/.local/share/Steam` and `~/.steam/steam`.
 
-To force a fresh download and reinstall:
+With no interactive terminal, the command automatically installs/updates the fix and launches the game. To force a fresh download and reinstall:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/5fcd1ff5caa5f70f40c6070bd9314bb7546d1889/install-pbz-fix.sh | FORCE_INSTALL=1 bash
 ```
+
+For direct actions, pass `--force-install`, `--launch`, `--launch-log`, `--uninstall`, `--diagnostics`, or `--status` to the script.
 
 ## Patch notes
 
@@ -22,11 +24,15 @@ See [CHANGELOG.md](CHANGELOG.md) for installer and release updates.
 
 ## Backups
 
-Existing `platform/steam/PBZ.exe` and `platform/steam/steam_api64.dll` files are backed up to `~/pbz-backup-YYYYMMDD-HHMMSS`.
+Files the fix replaces are backed up to `~/pbz-backup-YYYYMMDD-HHMMSS`.
 
 ## Uninstall
 
-Restore the backed-up files from the timestamped backup directory to the game's `PBZ` folder, preserving the `platform/steam/` structure. Remove `.pbz-fix-install-revision` and `.pbz-fix-files.sha256` from the game folder to clear the install marker. Files that did not exist before installation are not included in the backup.
+Choose **Uninstall/restore** from the menu to restore the original files and remove files that the fix added. The original backup is retained across reinstalls. Older backups made before the interactive installer may only contain `PBZ.exe` and `steam_api64.dll`; the script warns that other fix files may remain when restoring one of those backups.
+
+## Logs
+
+Each action saves its output to a timestamped `PBZ-fix-*.log` file on the Desktop. Choose **Launch game with Proton logging** to also create `~/steam-4115450.log`. Diagnostic reports avoid environment variables and Proton log contents, but include local paths/usernames; review them before sharing.
 
 ## Support
 
