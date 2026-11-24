@@ -163,8 +163,13 @@ download_fix() {
 
     if command -v gh >/dev/null 2>&1; then
         if gh auth status >/dev/null 2>&1; then
+            local -a release_args=()
+            if [[ "$FIX_RELEASE" != "latest" ]]; then
+                release_args=("$FIX_RELEASE")
+            fi
+
             log "Downloading fix archive from GitHub..."
-            gh release download "$FIX_RELEASE" \
+            gh release download "${release_args[@]}" \
                 --repo "$FIX_REPO" \
                 --pattern "$FIX_ASSET" \
                 --dir "$TEMP_DIR" ||
