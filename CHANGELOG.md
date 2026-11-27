@@ -24,6 +24,11 @@ Initial release.
 - Changed install and force-reinstall actions to return to the menu without starting the game.
 - Kept game launch as a separate menu action for users who want to start it from PBZ-Fix.
 
+### Installer update — 2026-11-27 (v2.5)
+
+- Combined save-file checking with install/repair so the same menu option can be rerun after the first save.
+- Kept a separate save-repair command for users who only want to repair save files.
+
 ### Installer update — 2026-11-24
 
 - Fixed downloading the latest release when the GitHub CLI is installed and authenticated.

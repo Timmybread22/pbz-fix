@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.4"
+SCRIPT_VERSION="2.5"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
@@ -739,6 +739,7 @@ install_fix() {
         log "Post-install verification passed."
     fi
 
+    prepare_save_link
     cleanup
 }
 
@@ -1002,15 +1003,14 @@ show_menu() {
     while true; do
         print_banner
         printf '%s\n' \
-            "1) Install/repair fix (run again after your first save to fix save files)" \
-            "2) Fix save-file location (run only after first save)" \
-            "3) Force reinstall/update" \
-            "4) Launch game" \
-            "5) Launch game with Proton logging" \
-            "6) Uninstall/restore original files" \
-            "7) Create diagnostic log on Desktop" \
-            "8) Show installation status" \
-            "9) Undo save-folder link" \
+            "1) Install/repair and check saves (run again after your first save)" \
+            "2) Force reinstall/update and check saves" \
+            "3) Launch game" \
+            "4) Launch game with Proton logging" \
+            "5) Uninstall/restore original files" \
+            "6) Create diagnostic log on Desktop" \
+            "7) Show installation status" \
+            "8) Undo save-folder link" \
             "0) Exit"
 
         if ! IFS= read -r -p $'\nSelect an option: ' choice </dev/tty; then
@@ -1023,25 +1023,21 @@ show_menu() {
                 run_action "Install/update" install_fix || log "Install action failed."
                 ;;
             2)
-                run_action "Fix save-file location" fix_save_link ||
-                    log "Save-file fix failed."
-                ;;
-            3)
                 run_action "Force reinstall/update" force_install_fix ||
                     log "Force reinstall action failed."
                 ;;
-            4)
+            3)
                 run_action "Launch game" launch_game || return $?
                 return 0
                 ;;
-            5)
+            4)
                 run_action "Launch with Proton logging" launch_game_with_log || return $?
                 return 0
                 ;;
-            6) run_action "Uninstall/restore" uninstall_fix || log "Uninstall action failed." ;;
-            7) run_action "Diagnostic report" write_diagnostics || log "Diagnostic report failed." ;;
-            8) run_action "Status report" show_status || log "Status report failed." ;;
-            9) run_action "Undo save-folder link" undo_save_link || log "Save-link undo failed." ;;
+            5) run_action "Uninstall/restore" uninstall_fix || log "Uninstall action failed." ;;
+            6) run_action "Diagnostic report" write_diagnostics || log "Diagnostic report failed." ;;
+            7) run_action "Status report" show_status || log "Status report failed." ;;
+            8) run_action "Undo save-folder link" undo_save_link || log "Save-link undo failed." ;;
             0) log "Goodbye."; return 0 ;;
             *) log "Choose one of the listed options." ;;
         esac
