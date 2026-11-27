@@ -1,6 +1,6 @@
 # ⚔️ PBZ-Fix
 
-Interactive Linux terminal manager for the **Phantom Blade Zero** fix. Install or repair the fix, launch the game, restore backups, and create diagnostics from one menu.
+Interactive Linux terminal manager for the **Phantom Blade Zero** fix. Install or repair the fix, launch the game, restore backups, and create diagnostics from one menu. On launch, it also checks the save folder and safely links existing saves to the signed-in Steam account's expected location.
 
 ## Install
 
@@ -21,6 +21,7 @@ PBZ-Fix opens a numbered menu in the terminal. It is not a graphical app; keep t
 5. **Uninstall/restore** — Restores files from the original backup and removes files added by the fix.
 6. **Diagnostic log** — Saves a system and install report to your Desktop.
 7. **Status** — Shows Steam, game, GE-Proton, and fix status.
+8. **Undo save-folder link** — Restores the save-folder layout from before the automatic link was made.
 
 > **Requirements:** Linux, Steam with Phantom Blade Zero installed, GE-Proton in Steam's `compatibilitytools.d` directory, `curl`, and `unzip`. Steam is detected in `~/.local/share/Steam` or `~/.steam/steam`.
 
@@ -29,6 +30,8 @@ PBZ-Fix opens a numbered menu in the terminal. It is not a graphical app; keep t
 Before installing, PBZ-Fix backs up files it will replace to `~/pbz-backup-YYYYMMDD-HHMMSS`. The original restore point is retained during later reinstalls.
 
 Choose **Uninstall/restore** from the menu to restore the original files. Older backups made before full-file tracking may contain only `PBZ.exe` and `steam_api64.dll`; the menu warns if it finds one. Steam's **Verify integrity of game files** can restore official files, but may not remove extra files left by an older fix.
+
+When launching, PBZ-Fix checks Steam's active account and the game's Steam library, including libraries on a microSD card. If save files are found under a different Steam ID folder, it copies each existing source and expected folder to `~/pbz-save-backup-*`, moves the old expected folder aside, then creates and verifies a folder link by checking that the expected location opens readable save files. It never merges over or deletes existing saves. Steam IDs are read locally and are not printed in status or diagnostics. On a new install with no saves yet, it leaves the folders alone and launches normally; run PBZ-Fix again after saves exist to repair their location if needed. Choose **Undo save-folder link** (or run `install-pbz-fix.sh --undo-save-link`) to restore the original folder layout; the safety copy is retained. The script verifies filesystem access but cannot confirm that a cloud upload has completed.
 
 ## Logs and troubleshooting
 
