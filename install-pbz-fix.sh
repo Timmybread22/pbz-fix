@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.0"
+SCRIPT_VERSION="2.4"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
@@ -14,6 +14,8 @@ TEMP_DIR=""
 STEAM_ROOT=""
 GAME_DIR=""
 PROTON=""
+GAME_LIBRARY=""
+STEAM_LIBRARIES=()
 
 log() {
     printf '[PBZ Fix] %s\n' "$*"
@@ -45,12 +47,47 @@ detect_steam() {
     for candidate in "$HOME/.local/share/Steam" "$HOME/.steam/steam"; do
         if [[ -d "$candidate" && -d "$candidate/steamapps" ]]; then
             STEAM_ROOT="$candidate"
+            load_steam_libraries
             log "Using Steam installation: $STEAM_ROOT"
             return 0
         fi
     done
 
     return 1
+}
+
+add_steam_library() {
+    local library="$1"
+    local existing
+
+    [[ -d "$library/steamapps" ]] || return 0
+    for existing in "${STEAM_LIBRARIES[@]}"; do
+        [[ "$existing" == "$library" ]] && return 0
+    done
+    STEAM_LIBRARIES+=("$library")
+}
+
+load_steam_libraries() {
+    local library_file="$STEAM_ROOT/steamapps/libraryfolders.vdf"
+    local library
+
+    STEAM_LIBRARIES=()
+    add_steam_library "$STEAM_ROOT"
+
+    [[ -r "$library_file" ]] || return 0
+    while IFS= read -r library; do
+        add_steam_library "$library"
+    done < <(
+        awk -F '"' '
+            {
+                for (field = 1; field < NF; field++) {
+                    if ($field == "path") {
+                        print $(field + 2)
+                    }
+                }
+            }
+        ' "$library_file"
+    )
 }
 
 manifest_install_dir() {
@@ -64,27 +101,27 @@ manifest_install_dir() {
 }
 
 find_game_directory() {
-    local primary="$STEAM_ROOT/steamapps/common/PBZ"
+    local library
     local manifest
     local manifest_dir
     local install_dir
     local game_candidate
     local -a manifests=()
 
-    if [[ -d "$primary" ]]; then
-        GAME_DIR="$primary"
-        log "Found game directory: $GAME_DIR"
-        return 0
-    fi
+    for library in "${STEAM_LIBRARIES[@]}"; do
+        game_candidate="$library/steamapps/common/PBZ"
+        if [[ -d "$game_candidate" ]]; then
+            GAME_DIR="$game_candidate"
+            GAME_LIBRARY="$library"
+            log "Found game directory: $GAME_DIR"
+            return 0
+        fi
 
-    while IFS= read -r -d '' manifest; do
-        manifests+=("$manifest")
-    done < <(
-        find "$STEAM_ROOT" \
-            -type f \
-            -name "appmanifest_${APP_ID}.acf" \
-            -print0 2>/dev/null
-    )
+        manifest="$library/steamapps/appmanifest_${APP_ID}.acf"
+        if [[ -f "$manifest" ]]; then
+            manifests+=("$manifest")
+        fi
+    done
 
     for manifest in "${manifests[@]}"; do
         manifest_dir="$(dirname "$manifest")"
@@ -94,6 +131,7 @@ find_game_directory() {
             game_candidate="$manifest_dir/common/$install_dir"
             if [[ -d "$game_candidate" ]]; then
                 GAME_DIR="$game_candidate"
+                GAME_LIBRARY="$(dirname "$manifest_dir")"
                 log "Found game directory through app manifest: $GAME_DIR"
                 return 0
             fi
@@ -151,6 +189,266 @@ find_newest_proton() {
     )
 
     [[ -n "$PROTON" ]]
+}
+
+steam_account_id() {
+    local loginusers="$STEAM_ROOT/config/loginusers.vdf"
+    local -a recent_accounts=()
+
+    [[ -r "$loginusers" ]] || return 1
+    mapfile -t recent_accounts < <(
+        awk -F '"' '
+            $2 ~ /^[0-9]+$/ && length($2) == 17 {
+                account = $2
+            }
+            $2 == "MostRecent" {
+                if ($4 == "1" && account != "") {
+                    print account
+                }
+                account = ""
+            }
+        ' "$loginusers"
+    )
+
+    ((${#recent_accounts[@]} == 1)) || return 1
+    [[ "${recent_accounts[0]}" =~ ^[0-9]{17}$ ]] || return 1
+    printf '%s' "${recent_accounts[0]}"
+}
+
+save_folder_with_newest_file() {
+    local save_root
+    local folder
+    local newest_file
+    local best_folder=""
+    local best_time=""
+    local name
+
+    for save_root in "$@"; do
+        [[ -d "$save_root" ]] || continue
+        while IFS= read -r -d '' folder; do
+            name="$(basename "$folder")"
+            [[ "$name" =~ ^[0-9]{17}$ ]] || continue
+
+            newest_file="$(
+                find "$folder" -type f -printf '%T@\n' 2>/dev/null |
+                    sort -nr |
+                    sed -n '1p'
+            )"
+            [[ -n "$newest_file" ]] || continue
+
+            if [[ -z "$best_time" ]] ||
+                awk -v candidate="$newest_file" -v current="$best_time" \
+                    'BEGIN { exit !(candidate > current) }'; then
+                best_folder="$folder"
+                best_time="$newest_file"
+            fi
+        done < <(find "$save_root" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+    done
+
+    [[ -n "$best_folder" ]] || return 1
+    printf '%s' "$best_folder"
+}
+
+latest_save_backup() {
+    local backup
+    local -a backups=()
+
+    while IFS= read -r -d '' backup; do
+        [[ -f "$backup/.pbz-save-link-state" ]] && backups+=("$backup")
+    done < <(
+        find "$HOME" \
+            -maxdepth 1 \
+            -mindepth 1 \
+            -type d \
+            -name 'pbz-save-backup-*' \
+            -print0 |
+            sort -z
+    )
+
+    if ((${#backups[@]} > 0)); then
+        printf '%s' "${backups[${#backups[@]}-1]}"
+    fi
+}
+
+mark_save_link_undone() {
+    local backup_dir="$1"
+
+    mv -- "$backup_dir/.pbz-save-link-state" \
+        "$backup_dir/.pbz-save-link-undone" ||
+        log "WARNING: The backup remains available, but its undo record could not be updated."
+}
+
+prepare_save_link() {
+    local account_id
+    local save_root="$GAME_LIBRARY/steamapps/compatdata/$APP_ID/pfx/drive_c/users/steamuser/AppData/Local/ProjectPBZ/Saved/SaveGames/Steam"
+    local candidate_root
+    local source_folder=""
+    local expected_folder
+    local backup_dir
+    local old_folder=""
+    local timestamp
+    local suffix=0
+    local library
+    local -a save_roots=("$save_root")
+
+    for library in "${STEAM_LIBRARIES[@]}"; do
+        candidate_root="$library/steamapps/compatdata/$APP_ID/pfx/drive_c/users/steamuser/AppData/Local/ProjectPBZ/Saved/SaveGames/Steam"
+        if [[ "$candidate_root" != "$save_root" ]]; then
+            save_roots+=("$candidate_root")
+        fi
+    done
+    source_folder="$(save_folder_with_newest_file "${save_roots[@]}" 2>/dev/null || true)"
+
+    if [[ -z "$source_folder" ]]; then
+        log "No existing save files were found. Nothing was changed."
+        return 0
+    fi
+
+    if ! account_id="$(steam_account_id)"; then
+        log "WARNING: Steam could not confirm one signed-in account. Save folders were not changed."
+        return 0
+    fi
+
+    expected_folder="$save_root/$account_id"
+    if [[ "$source_folder" == "$expected_folder" ]] ||
+        { [[ -L "$expected_folder" ]] &&
+          [[ "$(readlink -f "$expected_folder" 2>/dev/null || true)" == "$(readlink -f "$source_folder" 2>/dev/null || true)" ]]; }; then
+        log "Save folder is already in the expected location."
+        return 0
+    fi
+
+    timestamp="$(date '+%Y%m%d-%H%M%S')"
+    backup_dir="$HOME/pbz-save-backup-$timestamp"
+    if ! mkdir -- "$backup_dir" 2>/dev/null; then
+        backup_dir="$(mktemp -d "$HOME/pbz-save-backup-$timestamp-XXXXXX")" ||
+            fail "Could not create a save backup. Save folders were not changed."
+    fi
+
+    cp -a -- "$source_folder" "$backup_dir/actual-save-folder" ||
+        fail "Could not back up the existing save folder. Save folders were not changed."
+    if [[ -e "$expected_folder" || -L "$expected_folder" ]]; then
+        cp -a -- "$expected_folder" "$backup_dir/original-expected-folder" ||
+            fail "Could not back up the expected save folder. Save folders were not changed."
+    fi
+
+    while :; do
+        old_folder="$expected_folder.pbz-fix-original-$timestamp"
+        if (( suffix > 0 )); then
+            old_folder="$old_folder-$suffix"
+        fi
+        [[ ! -e "$old_folder" && ! -L "$old_folder" ]] && break
+        ((suffix += 1))
+    done
+
+    printf '%s\0%s\0%s\0' \
+        "$expected_folder" \
+        "$([[ -e "$expected_folder" || -L "$expected_folder" ]] && printf '%s' "$old_folder")" \
+        "$source_folder" > "$backup_dir/.pbz-save-link-state" ||
+        fail "Could not record the save-link undo information. Save folders were not changed."
+
+    if [[ -e "$expected_folder" || -L "$expected_folder" ]]; then
+        mv -- "$expected_folder" "$old_folder" ||
+            fail "Could not move the old save folder aside. Existing saves were not changed."
+    fi
+
+    if ! mkdir -p "$save_root"; then
+        if [[ -e "$old_folder" || -L "$old_folder" ]]; then
+            if mv -- "$old_folder" "$expected_folder"; then
+                mark_save_link_undone "$backup_dir"
+            else
+                log "WARNING: The old folder remains safely stored beside the expected save location."
+            fi
+        else
+            mark_save_link_undone "$backup_dir"
+        fi
+        fail "Could not prepare the expected save location. Existing saves were preserved."
+    fi
+    if ! ln -s -- "$source_folder" "$expected_folder"; then
+        if [[ -e "$old_folder" || -L "$old_folder" ]]; then
+            if mv -- "$old_folder" "$expected_folder"; then
+                mark_save_link_undone "$backup_dir"
+            else
+                log "WARNING: The old folder remains safely stored beside the expected save location."
+            fi
+        else
+            mark_save_link_undone "$backup_dir"
+        fi
+        fail "Could not create the save-folder link. Existing saves were preserved."
+    fi
+
+    if [[ ! -L "$expected_folder" || ! -d "$expected_folder" ]] ||
+        [[ -z "$(find -L "$expected_folder" -type f -readable -print -quit 2>/dev/null)" ]]; then
+        rm -f -- "$expected_folder"
+        if [[ -e "$old_folder" || -L "$old_folder" ]]; then
+            if mv -- "$old_folder" "$expected_folder"; then
+                mark_save_link_undone "$backup_dir"
+            else
+                log "WARNING: The old folder remains safely stored beside the expected save location."
+            fi
+        else
+            mark_save_link_undone "$backup_dir"
+        fi
+        fail "Save-link verification failed. Existing saves were preserved."
+    fi
+
+    log "A safety copy of each existing save folder is stored in your home folder."
+    log "The expected save location now points to the newest available save files."
+    log "PBZ-Fix verified that the expected save location contains readable files."
+    log "The game and tools that use this save location can now access those files."
+    log "Cloud upload status is managed by Steam or your cloud-save tool."
+    log "Choose 'Undo save-folder link' from the menu to restore the previous layout."
+}
+
+undo_save_link() {
+    local backup_dir
+    local state_file
+    local expected_folder=""
+    local old_folder=""
+    local source_folder=""
+
+    backup_dir="$(latest_save_backup)"
+    [[ -n "$backup_dir" ]] ||
+        fail "No save-link backup was found. There is nothing to undo."
+    state_file="$backup_dir/.pbz-save-link-state"
+
+    {
+        IFS= read -r -d '' expected_folder || true
+        IFS= read -r -d '' old_folder || true
+        IFS= read -r -d '' source_folder || true
+    } < "$state_file"
+
+    [[ "$expected_folder" == */Saved/SaveGames/Steam/* ]] &&
+        [[ "$(basename "$expected_folder")" =~ ^[0-9]{17}$ ]] &&
+        [[ "$source_folder" == */Saved/SaveGames/Steam/* ]] &&
+        [[ "$(basename "$source_folder")" =~ ^[0-9]{17}$ ]] ||
+        fail "The saved undo information is invalid. No folders were changed."
+
+    if [[ -n "$old_folder" ]] &&
+        [[ "$old_folder" != "$expected_folder".pbz-fix-original-* ]]; then
+        fail "The saved undo information is invalid. No folders were changed."
+    fi
+    if [[ -n "$old_folder" ]] &&
+        [[ ! -e "$old_folder" && ! -L "$old_folder" ]]; then
+        fail "The original folder is missing from its safe location. No folders were changed."
+    fi
+
+    if [[ -L "$expected_folder" ]]; then
+        [[ "$(readlink "$expected_folder")" == "$source_folder" ]] ||
+            fail "The save link has changed since it was created. No folders were changed."
+        rm -f -- "$expected_folder"
+    elif [[ -e "$expected_folder" ]]; then
+        fail "The expected save location now contains other files. No folders were changed."
+    fi
+
+    if [[ -n "$old_folder" ]]; then
+        mv -- "$old_folder" "$expected_folder" ||
+            fail "Could not restore the original folder. The save backup is still available."
+    fi
+
+    mv -- "$state_file" "$backup_dir/.pbz-save-link-undone" ||
+        fail "The original layout was restored, but the undo record could not be updated."
+    log "The previous save-folder layout has been restored. No save files were deleted."
+    log "The safety backup remains in your home folder."
 }
 
 download_fix() {
@@ -382,6 +680,11 @@ prepare_runtime() {
     log "Using GE-Proton: $PROTON"
 }
 
+fix_save_link() {
+    prepare_game
+    prepare_save_link
+}
+
 launch_detected_game() {
     local executable="$GAME_DIR/platform/steam/PBZ.exe"
     local windows_path
@@ -391,7 +694,7 @@ launch_detected_game() {
         fail "Game executable not found: $executable"
 
     export STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_ROOT"
-    export STEAM_COMPAT_DATA_PATH="$STEAM_ROOT/steamapps/compatdata/$APP_ID"
+    export STEAM_COMPAT_DATA_PATH="$GAME_LIBRARY/steamapps/compatdata/$APP_ID"
     export SteamAppId="$APP_ID"
     export SteamGameId="$APP_ID"
     mkdir -p "$STEAM_COMPAT_DATA_PATH"
@@ -414,7 +717,7 @@ launch_detected_game() {
 }
 
 install_fix() {
-    prepare_runtime
+    prepare_game
 
     if fix_is_installed; then
         log "Fix is already installed and verified; skipping download and installation."
@@ -436,7 +739,6 @@ install_fix() {
         log "Post-install verification passed."
     fi
 
-    launch_detected_game
     cleanup
 }
 
@@ -700,13 +1002,15 @@ show_menu() {
     while true; do
         print_banner
         printf '%s\n' \
-            "1) Install/repair fix and launch game" \
-            "2) Force reinstall/update and launch" \
-            "3) Launch game" \
-            "4) Launch game with Proton logging" \
-            "5) Uninstall/restore original files" \
-            "6) Create diagnostic log on Desktop" \
-            "7) Show installation status" \
+            "1) Install/repair fix (run again after your first save to fix save files)" \
+            "2) Fix save-file location (run only after first save)" \
+            "3) Force reinstall/update" \
+            "4) Launch game" \
+            "5) Launch game with Proton logging" \
+            "6) Uninstall/restore original files" \
+            "7) Create diagnostic log on Desktop" \
+            "8) Show installation status" \
+            "9) Undo save-folder link" \
             "0) Exit"
 
         if ! IFS= read -r -p $'\nSelect an option: ' choice </dev/tty; then
@@ -716,24 +1020,28 @@ show_menu() {
 
         case "$choice" in
             1)
-                run_action "Install/update and launch" install_fix || return $?
-                return 0
+                run_action "Install/update" install_fix || log "Install action failed."
                 ;;
             2)
-                run_action "Force reinstall/update and launch" force_install_fix || return $?
-                return 0
+                run_action "Fix save-file location" fix_save_link ||
+                    log "Save-file fix failed."
                 ;;
             3)
+                run_action "Force reinstall/update" force_install_fix ||
+                    log "Force reinstall action failed."
+                ;;
+            4)
                 run_action "Launch game" launch_game || return $?
                 return 0
                 ;;
-            4)
+            5)
                 run_action "Launch with Proton logging" launch_game_with_log || return $?
                 return 0
                 ;;
-            5) run_action "Uninstall/restore" uninstall_fix || log "Uninstall action failed." ;;
-            6) run_action "Diagnostic report" write_diagnostics || log "Diagnostic report failed." ;;
-            7) run_action "Status report" show_status || log "Status action failed." ;;
+            6) run_action "Uninstall/restore" uninstall_fix || log "Uninstall action failed." ;;
+            7) run_action "Diagnostic report" write_diagnostics || log "Diagnostic report failed." ;;
+            8) run_action "Status report" show_status || log "Status report failed." ;;
+            9) run_action "Undo save-folder link" undo_save_link || log "Save-link undo failed." ;;
             0) log "Goodbye."; return 0 ;;
             *) log "Choose one of the listed options." ;;
         esac
@@ -756,23 +1064,25 @@ main() {
     require_command sort
 
     case "${1:-}" in
-        --install) run_action "Install/update and launch" install_fix ;;
-        --force-install) run_action "Force reinstall/update and launch" force_install_fix ;;
+        --install) run_action "Install/update" install_fix ;;
+        --fix-save-link) run_action "Fix save-file location" fix_save_link ;;
+        --force-install) run_action "Force reinstall/update" force_install_fix ;;
         --launch) run_action "Launch game" launch_game ;;
         --launch-log) run_action "Launch with Proton logging" launch_game_with_log ;;
         --uninstall) run_action "Uninstall/restore" uninstall_fix ;;
         --diagnostics) run_action "Diagnostic report" write_diagnostics ;;
         --status) run_action "Status report" show_status ;;
+        --undo-save-link) run_action "Undo save-folder link" undo_save_link ;;
         --help|-h)
-            printf 'Usage: %s [--install|--force-install|--launch|--launch-log|--uninstall|--diagnostics|--status]\n' "$0"
+            printf 'Usage: %s [--install|--fix-save-link|--force-install|--launch|--launch-log|--uninstall|--undo-save-link|--diagnostics|--status]\n' "$0"
             printf 'With no option, show the interactive menu (or install when no terminal is available).\n'
             ;;
         "")
             if [[ -r /dev/tty ]]; then
                 show_menu
             else
-                log "No interactive terminal detected; installing and launching."
-                run_action "Install/update and launch" install_fix
+                log "No interactive terminal detected; installing without launching the game."
+                run_action "Install/update" install_fix
             fi
             ;;
         *)
