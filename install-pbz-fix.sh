@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.2"
+SCRIPT_VERSION="2.3"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
@@ -680,6 +680,11 @@ prepare_runtime() {
     log "Using GE-Proton: $PROTON"
 }
 
+fix_save_link() {
+    prepare_game
+    prepare_save_link
+}
+
 launch_detected_game() {
     local executable="$GAME_DIR/platform/steam/PBZ.exe"
     local windows_path
@@ -687,8 +692,6 @@ launch_detected_game() {
 
     [[ -f "$executable" ]] ||
         fail "Game executable not found: $executable"
-
-    prepare_save_link
 
     export STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_ROOT"
     export STEAM_COMPAT_DATA_PATH="$GAME_LIBRARY/steamapps/compatdata/$APP_ID"
@@ -1000,14 +1003,15 @@ show_menu() {
     while true; do
         print_banner
         printf '%s\n' \
-            "1) Install/repair fix and launch game" \
-            "2) Force reinstall/update and launch" \
-            "3) Launch game" \
-            "4) Launch game with Proton logging" \
-            "5) Uninstall/restore original files" \
-            "6) Create diagnostic log on Desktop" \
-            "7) Show installation status" \
-            "8) Undo save-folder link" \
+            "1) Install/repair and launch (run again after your first save to fix save files)" \
+            "2) Fix save-file location (run only after first save)" \
+            "3) Force reinstall/update and launch" \
+            "4) Launch game" \
+            "5) Launch game with Proton logging" \
+            "6) Uninstall/restore original files" \
+            "7) Create diagnostic log on Desktop" \
+            "8) Show installation status" \
+            "9) Undo save-folder link" \
             "0) Exit"
 
         if ! IFS= read -r -p $'\nSelect an option: ' choice </dev/tty; then
@@ -1021,21 +1025,25 @@ show_menu() {
                 return 0
                 ;;
             2)
+                run_action "Fix save-file location" fix_save_link ||
+                    log "Save-file fix failed."
+                ;;
+            3)
                 run_action "Force reinstall/update and launch" force_install_fix || return $?
                 return 0
                 ;;
-            3)
+            4)
                 run_action "Launch game" launch_game || return $?
                 return 0
                 ;;
-            4)
+            5)
                 run_action "Launch with Proton logging" launch_game_with_log || return $?
                 return 0
                 ;;
-            5) run_action "Uninstall/restore" uninstall_fix || log "Uninstall action failed." ;;
-            6) run_action "Diagnostic report" write_diagnostics || log "Diagnostic report failed." ;;
-            7) run_action "Status report" show_status || log "Status action failed." ;;
-            8) run_action "Undo save-folder link" undo_save_link || log "Save-link undo failed." ;;
+            6) run_action "Uninstall/restore" uninstall_fix || log "Uninstall action failed." ;;
+            7) run_action "Diagnostic report" write_diagnostics || log "Diagnostic report failed." ;;
+            8) run_action "Status report" show_status || log "Status report failed." ;;
+            9) run_action "Undo save-folder link" undo_save_link || log "Save-link undo failed." ;;
             0) log "Goodbye."; return 0 ;;
             *) log "Choose one of the listed options." ;;
         esac
@@ -1059,6 +1067,7 @@ main() {
 
     case "${1:-}" in
         --install) run_action "Install/update and launch" install_fix ;;
+        --fix-save-link) run_action "Fix save-file location" fix_save_link ;;
         --force-install) run_action "Force reinstall/update and launch" force_install_fix ;;
         --launch) run_action "Launch game" launch_game ;;
         --launch-log) run_action "Launch with Proton logging" launch_game_with_log ;;
@@ -1067,7 +1076,7 @@ main() {
         --status) run_action "Status report" show_status ;;
         --undo-save-link) run_action "Undo save-folder link" undo_save_link ;;
         --help|-h)
-            printf 'Usage: %s [--install|--force-install|--launch|--launch-log|--uninstall|--undo-save-link|--diagnostics|--status]\n' "$0"
+            printf 'Usage: %s [--install|--fix-save-link|--force-install|--launch|--launch-log|--uninstall|--undo-save-link|--diagnostics|--status]\n' "$0"
             printf 'With no option, show the interactive menu (or install when no terminal is available).\n'
             ;;
         "")

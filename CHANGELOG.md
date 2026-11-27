@@ -14,6 +14,11 @@ Initial release.
 - Backed up existing save folders before relinking and added an undo action.
 - Made first-launch behavior a no-op when no saves exist yet.
 
+### Installer update — 2026-11-27 (v2.3)
+
+- Added a separate save-file repair menu action with a first-save reminder.
+- Kept save-folder repair out of normal game launches so users can first create a save through Steam.
+
 ### Installer update — 2026-11-24
 
 - Fixed downloading the latest release when the GitHub CLI is installed and authenticated.
