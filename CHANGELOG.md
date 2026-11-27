@@ -19,6 +19,11 @@ Initial release.
 - Added a separate save-file repair menu action with a first-save reminder.
 - Kept save-folder repair out of normal game launches so users can first create a save through Steam.
 
+### Installer update — 2026-11-27 (v2.4)
+
+- Changed install and force-reinstall actions to return to the menu without starting the game.
+- Kept game launch as a separate menu action for users who want to start it from PBZ-Fix.
+
 ### Installer update — 2026-11-24
 
 - Fixed downloading the latest release when the GitHub CLI is installed and authenticated.

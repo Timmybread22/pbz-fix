@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.3"
+SCRIPT_VERSION="2.4"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
@@ -717,7 +717,7 @@ launch_detected_game() {
 }
 
 install_fix() {
-    prepare_runtime
+    prepare_game
 
     if fix_is_installed; then
         log "Fix is already installed and verified; skipping download and installation."
@@ -739,7 +739,6 @@ install_fix() {
         log "Post-install verification passed."
     fi
 
-    launch_detected_game
     cleanup
 }
 
@@ -1003,9 +1002,9 @@ show_menu() {
     while true; do
         print_banner
         printf '%s\n' \
-            "1) Install/repair and launch (run again after your first save to fix save files)" \
+            "1) Install/repair fix (run again after your first save to fix save files)" \
             "2) Fix save-file location (run only after first save)" \
-            "3) Force reinstall/update and launch" \
+            "3) Force reinstall/update" \
             "4) Launch game" \
             "5) Launch game with Proton logging" \
             "6) Uninstall/restore original files" \
@@ -1021,16 +1020,15 @@ show_menu() {
 
         case "$choice" in
             1)
-                run_action "Install/update and launch" install_fix || return $?
-                return 0
+                run_action "Install/update" install_fix || log "Install action failed."
                 ;;
             2)
                 run_action "Fix save-file location" fix_save_link ||
                     log "Save-file fix failed."
                 ;;
             3)
-                run_action "Force reinstall/update and launch" force_install_fix || return $?
-                return 0
+                run_action "Force reinstall/update" force_install_fix ||
+                    log "Force reinstall action failed."
                 ;;
             4)
                 run_action "Launch game" launch_game || return $?
@@ -1066,9 +1064,9 @@ main() {
     require_command sort
 
     case "${1:-}" in
-        --install) run_action "Install/update and launch" install_fix ;;
+        --install) run_action "Install/update" install_fix ;;
         --fix-save-link) run_action "Fix save-file location" fix_save_link ;;
-        --force-install) run_action "Force reinstall/update and launch" force_install_fix ;;
+        --force-install) run_action "Force reinstall/update" force_install_fix ;;
         --launch) run_action "Launch game" launch_game ;;
         --launch-log) run_action "Launch with Proton logging" launch_game_with_log ;;
         --uninstall) run_action "Uninstall/restore" uninstall_fix ;;
@@ -1083,8 +1081,8 @@ main() {
             if [[ -r /dev/tty ]]; then
                 show_menu
             else
-                log "No interactive terminal detected; installing and launching."
-                run_action "Install/update and launch" install_fix
+                log "No interactive terminal detected; installing without launching the game."
+                run_action "Install/update" install_fix
             fi
             ;;
         *)

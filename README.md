@@ -14,9 +14,9 @@ PBZ-Fix opens a numbered menu in the terminal. It is not a graphical app; keep t
 
 ### Menu options
 
-1. **Install/repair and launch** — Installs the fix if needed, then launches. Run PBZ-Fix again after your first save and choose option 2.
+1. **Install/repair fix** — Installs the fix if needed and returns to the menu without starting the game. Run PBZ-Fix again after your first save and choose option 2.
 2. **Fix save-file location** — Run only after the game has created its first save. Makes backups and links misplaced saves without launching the game.
-3. **Force reinstall** — Downloads and installs the fix again, then launches.
+3. **Force reinstall** — Downloads and installs the fix again without launching the game.
 4. **Launch** — Starts the game without reinstalling.
 5. **Launch with Proton logging** — Starts the game and asks Proton to write a debug log.
 6. **Uninstall/restore** — Restores files from the original backup and removes files added by the fix.
@@ -24,7 +24,9 @@ PBZ-Fix opens a numbered menu in the terminal. It is not a graphical app; keep t
 8. **Status** — Shows Steam, game, GE-Proton, and fix status.
 9. **Undo save-folder link** — Restores the save-folder layout from before the link was made.
 
-> **Requirements:** Linux, Steam with Phantom Blade Zero installed, GE-Proton in Steam's `compatibilitytools.d` directory, `curl`, and `unzip`. Steam is detected in `~/.local/share/Steam` or `~/.steam/steam`.
+> **Requirements:** Linux, Steam with Phantom Blade Zero installed, `curl`, and `unzip`. GE-Proton in Steam's `compatibilitytools.d` directory is required only for PBZ-Fix's Launch options; you can also start the game directly through Steam. Steam is detected in `~/.local/share/Steam` or `~/.steam/steam`.
+
+After installing, choose **Launch** from the menu or start the game through Steam. Once you have created your first save, close the game, run PBZ-Fix again, and choose option 2.
 
 ## Backups and uninstall
 
