@@ -7,7 +7,7 @@ Interactive Linux terminal manager for the **Phantom Blade Zero** fix. Install o
 Open a Linux terminal and paste:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/4e270a7652832a4ab16ccc8fdced965507a6c6f9/install-pbz-fix.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/2aaae6e5bda74ca3c3d6199cff9d02223de90a43/install-pbz-fix.sh | bash
 ```
 
 PBZ-Fix opens a numbered menu in the terminal. It is not a graphical app; keep the terminal open while using the menu. After launching the game, PBZ-Fix exits when the game closes.
