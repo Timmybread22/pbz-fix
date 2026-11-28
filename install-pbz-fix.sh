@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.6-beta"
+SCRIPT_VERSION="2.7"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
@@ -770,6 +770,109 @@ force_install_fix() {
     FORCE_INSTALL=1 install_fix
 }
 
+steam_is_running() {
+    local user_id
+    local process_name
+
+    user_id="$(id -u)"
+    for process_name in steam steamwebhelper; do
+        if pgrep -u "$user_id" -x "$process_name" >/dev/null 2>&1; then
+            return 0
+        fi
+    done
+    pgrep -u "$user_id" -f "$STEAM_ROOT/steam.sh" >/dev/null 2>&1
+}
+
+require_steam_closed() {
+    local answer
+
+    [[ -r /dev/tty ]] ||
+        fail "Steam launch setup requires an interactive terminal."
+
+    printf '%s\n' \
+        "Close Steam completely before changing its launch options."
+    IFS= read -r -p "Press Enter once Steam is closed, or Ctrl+C to cancel: " \
+        answer </dev/tty ||
+        fail "Could not read confirmation from the terminal."
+
+    if steam_is_running; then
+        fail "Steam is still running. Close it completely, then retry."
+    fi
+}
+
+setup_steam_launch() {
+    local install_dir="$HOME/.local/share/pbz-fix"
+    local source_ref="${PBZ_FIX_SETUP_REF:-main}"
+    local source_revision
+    local source_url
+    local script_name
+    local staging_dir
+
+    require_command curl
+    require_command python3
+    require_command pgrep
+    if ! detect_steam; then
+        fail "Steam could not be found."
+    fi
+    require_steam_closed
+
+    TEMP_DIR="$(mktemp -d)"
+    staging_dir="$TEMP_DIR/pbz-fix"
+    mkdir -p "$staging_dir"
+
+    log "Resolving a pinned PBZ-Fix source revision..."
+    source_revision="$(
+        curl --fail --location --silent --show-error --retry 3 \
+            "https://api.github.com/repos/$FIX_REPO/commits/$source_ref" |
+            python3 -c 'import json,sys; print(json.load(sys.stdin).get("sha", ""))'
+    )" || fail "Could not resolve the PBZ-Fix source revision."
+    [[ "$source_revision" =~ ^[0-9a-f]{40}$ ]] ||
+        fail "GitHub returned an invalid PBZ-Fix commit SHA."
+
+    source_url="https://raw.githubusercontent.com/$FIX_REPO/$source_revision"
+    for script_name in install-pbz-fix.sh steam-launch-beta.sh steam-launch-config.py; do
+        log "Downloading $script_name from commit $source_revision..."
+        curl --fail --location --silent --show-error --retry 3 \
+            "$source_url/$script_name" \
+            --output "$staging_dir/$script_name" ||
+            fail "Could not download $script_name."
+    done
+
+    bash -n "$staging_dir/install-pbz-fix.sh" &&
+        bash -n "$staging_dir/steam-launch-beta.sh" ||
+        fail "Downloaded shell scripts failed syntax validation."
+    python3 -m py_compile "$staging_dir/steam-launch-config.py" ||
+        fail "Downloaded Steam launch configuration helper failed validation."
+
+    mkdir -p "$install_dir"
+    for script_name in install-pbz-fix.sh steam-launch-beta.sh steam-launch-config.py; do
+        cp -- "$staging_dir/$script_name" "$install_dir/$script_name.tmp"
+        chmod 755 "$install_dir/$script_name.tmp"
+        mv -f -- "$install_dir/$script_name.tmp" "$install_dir/$script_name"
+    done
+
+    python3 "$install_dir/steam-launch-config.py" setup \
+        --steam-root "$STEAM_ROOT" \
+        --install-dir "$install_dir"
+}
+
+undo_steam_launch() {
+    local install_dir="$HOME/.local/share/pbz-fix"
+
+    require_command python3
+    require_command pgrep
+    if ! detect_steam; then
+        fail "Steam could not be found."
+    fi
+    require_steam_closed
+    [[ -f "$install_dir/steam-launch-config.py" ]] ||
+        fail "Steam launch setup files were not found in $install_dir."
+
+    python3 "$install_dir/steam-launch-config.py" undo \
+        --steam-root "$STEAM_ROOT" \
+        --install-dir "$install_dir"
+}
+
 launch_game() {
     prepare_runtime
     launch_detected_game
@@ -1045,6 +1148,8 @@ show_menu() {
             "6) Create diagnostic log on Desktop" \
             "7) Show installation status" \
             "8) Undo save-folder link" \
+            "9) Set up Steam launch wrapper" \
+            "10) Undo Steam launch wrapper" \
             "0) Exit"
 
         if ! IFS= read -r -p $'\nSelect an option: ' choice </dev/tty; then
@@ -1072,6 +1177,8 @@ show_menu() {
             6) run_action "Diagnostic report" write_diagnostics || log "Diagnostic report failed." ;;
             7) run_action "Status report" show_status || log "Status report failed." ;;
             8) run_action "Undo save-folder link" undo_save_link || log "Save-link undo failed." ;;
+            9) run_action "Set up Steam launch wrapper" setup_steam_launch || log "Steam launch setup failed." ;;
+            10) run_action "Undo Steam launch wrapper" undo_steam_launch || log "Steam launch undo failed." ;;
             0) log "Goodbye."; return 0 ;;
             *) log "Choose one of the listed options." ;;
         esac
@@ -1093,8 +1200,10 @@ main() {
         --diagnostics) run_action "Diagnostic report" write_diagnostics ;;
         --status) run_action "Status report" show_status ;;
         --undo-save-link) run_action "Undo save-folder link" undo_save_link ;;
+        --setup-steam-launch) run_action "Set up Steam launch wrapper" setup_steam_launch ;;
+        --undo-steam-launch) run_action "Undo Steam launch wrapper" undo_steam_launch ;;
         --help|-h)
-            printf 'Usage: %s [--install|--fix-save-link|--force-install|--launch|--launch-log|--uninstall|--undo-save-link|--diagnostics|--status]\n' "$0"
+            printf 'Usage: %s [--install|--fix-save-link|--force-install|--launch|--launch-log|--uninstall|--undo-save-link|--setup-steam-launch|--undo-steam-launch|--diagnostics|--status]\n' "$0"
             printf 'With no option, show the interactive menu (or install when no terminal is available).\n'
             ;;
         "")
@@ -1111,6 +1220,6 @@ main() {
     esac
 }
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]}" == "$0" ]]; then
     main "$@"
 fi

@@ -23,19 +23,31 @@ PBZ-Fix opens a numbered menu in the terminal. It is not a graphical app; keep t
 7. **Status** — Shows Steam, game, GE-Proton, and fix status.
 8. **Undo save-folder link** — Restores the save-folder layout from before the link was made.
 
-> **Requirements:** Linux, Steam with Phantom Blade Zero installed, `curl`, and `unzip`. Steam is detected in `~/.local/share/Steam` or `~/.steam/steam`; game installs in additional libraries listed in Steam's `libraryfolders.vdf` are supported. The app manifest determines the active install location; the conventional `common/PBZ` path is used only if no manifest exists. GE-Proton in `compatibilitytools.d` is required for the normal direct-launch options; the beta wrapper uses the compatibility tool selected in Steam.
+> **Requirements:** Linux, Steam with Phantom Blade Zero installed, `curl`, and `unzip`. Steam is detected in `~/.local/share/Steam` or `~/.steam/steam`; game installs in additional libraries listed in Steam's `libraryfolders.vdf` are supported. The app manifest determines the active install location; the conventional `common/PBZ` path is used only if no manifest exists. GE-Proton in `compatibilitytools.d` is required for the normal direct-launch options; the Steam launch wrapper uses the compatibility tool selected in Steam.
 
 After installing, choose **Launch** from the menu or start the game through Steam. Once you have created your first save, close the game and run PBZ-Fix again; option 1 will check and repair the save location if needed.
 
-### Beta: launch through Steam
+### Steam launch wrapper
 
-The normal **Launch** menu option starts GE-Proton directly. To let Steam run the game with its selected compatibility tool and launch settings, use the beta wrapper instead. Keep `steam-launch-beta.sh` and `install-pbz-fix.sh` together in a persistent folder, then set the game's Steam launch options to:
+Run this one-line command from a terminal to set up Steam's launch option:
 
-```text
-bash "/home/deck/pbz-fix-beta/steam-launch-beta.sh" %command%
+```bash
+curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/main/install-pbz-fix.sh | bash -s -- --setup-steam-launch
 ```
 
-Replace the example path with the folder where you saved both scripts. The wrapper verifies or installs the fix before launch, redirects Steam's `steam/PBZ.exe` executable argument to `platform/steam/PBZ.exe`, and hands the original command and its arguments back to Steam. Arguments and paths containing spaces are preserved. If the original command does not contain exactly one matching executable argument, the wrapper stops with an error instead of launching the wrong file. Remove the launch option to return to the normal Steam launch.
+The installer asks you to close Steam and stops if Steam is still running. It downloads `install-pbz-fix.sh`, `steam-launch-beta.sh`, and the config helper into `~/.local/share/pbz-fix/`, all from the same resolved commit. It backs up each affected `localconfig.vdf` before setting this launch option:
+
+```text
+bash "/home/deck/.local/share/pbz-fix/steam-launch-beta.sh" %command%
+```
+
+The wrapper verifies or installs the fix, redirects Steam's `steam/PBZ.exe` executable argument to `platform/steam/PBZ.exe`, and hands Steam its original command and arguments. Steam continues using its selected compatibility tool. Arguments and paths containing spaces are preserved. If Steam launch options already contain a different value, setup asks before replacing it. To undo the setup, close Steam and run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/main/install-pbz-fix.sh | bash -s -- --undo-steam-launch
+```
+
+Undo restores the backed-up Steam config files and removes the launch-option change. The downloaded scripts and backups remain in `~/.local/share/pbz-fix/`.
 
 ## Backups and uninstall
 

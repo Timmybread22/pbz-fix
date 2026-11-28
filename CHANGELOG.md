@@ -29,9 +29,11 @@ Initial release.
 - Combined save-file checking with install/repair so the same menu option can be rerun after the first save.
 - Kept a separate save-repair command for users who only want to repair save files.
 
-### Beta Steam launch wrapper
+### Installer update — Steam launch wrapper
 
-- Added a beta wrapper that installs/verifies the fix, redirects Steam's executable argument to the working file, and then runs Steam's original `%command%`.
+- Added a setup and undo flow for Steam's launch option, with the wrapper and installer downloaded from the same pinned commit.
+- Prompt before replacing existing launch options; back up and restore each affected Steam `localconfig.vdf`.
+- Added a wrapper that installs/verifies the fix, redirects Steam's executable argument to the working file, and then runs Steam's original `%command%`.
 - Prefer the app-manifest install path across Steam libraries, falling back to `common/PBZ` only when no app manifest exists.
 - Keep each game's original restore point associated with its game directory instead of selecting the newest home-directory backup.
 
