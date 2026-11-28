@@ -1,71 +1,64 @@
 # ⚔️ PBZ-Fix
 
-Interactive Linux terminal manager for the **Phantom Blade Zero** fix. Install or repair the fix, launch the game, fix the save-file location after the first save, restore backups, and create diagnostics from one menu.
+Terminal manager for the **Phantom Blade Zero** fix on Linux and Steam Deck.
 
 ## Install
 
-Open a Linux terminal and paste:
+On Steam Deck, switch to Desktop Mode and open Konsole. Save and close any running game, then run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/main/install-pbz-fix.sh | bash
 ```
 
-PBZ-Fix opens a numbered menu in the terminal. It is not a graphical app; keep the terminal open while using the menu. After launching the game, PBZ-Fix exits when the game closes.
+Choose **1**. PBZ-Fix closes Steam automatically, installs or verifies the fix, checks saves, and sets up the Steam launch wrapper. There are no y/N confirmations. Restart Steam to play. After your first save, close the game and run option 1 again to check the save location.
 
-When piped into Bash, the installer checks its version against `main` and runs the latest commit's installer if the versions differ. If the check fails, it continues with the downloaded version; set `PBZ_FIX_NO_UPDATE=1` on the Bash command to skip the check. Installer changes must bump `SCRIPT_VERSION` for this check to detect them.
+The piped installer checks `main` for a different version and runs it when available. If the check fails, it continues with the downloaded version; an older cached script without this check cannot update itself. To skip the check:
 
-### Menu options
+```bash
+curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/main/install-pbz-fix.sh | PBZ_FIX_NO_UPDATE=1 bash
+```
 
-1. **Install/repair, check saves, and set up Steam launch** — Closes Steam, applies or verifies the fix, checks for misplaced saves, and configures the launch wrapper in one run. Run it again after your first save; it does not start the game.
-2. **Force reinstall/update** — Downloads and installs the fix again, then checks for misplaced saves.
-3. **Launch** — Starts the game without reinstalling.
-4. **Launch with Proton logging** — Starts the game and asks Proton to write a debug log.
-5. **Uninstall/restore** — Closes Steam, restores backed-up Steam configuration, removes the PBZ launch wrapper, and restores original game files.
-6. **Diagnostic log** — Saves a system and install report to your Desktop.
-7. **Status** — Shows Steam, game, GE-Proton, and fix status.
-8. **Undo save-folder link** — Restores the save-folder layout from before the link was made.
-9. **Undo Steam launch wrapper** — Restores the previous Steam launch options.
+**Requirements:** Linux, Steam with the game installed, `curl`, `unzip`, `python3`, and `pgrep`. Additional Steam libraries and microSD installs are supported. Menu options 2–4 require GE-Proton in Steam's `compatibilitytools.d`; Steam launches use the compatibility tool selected in Steam.
 
-> **Requirements:** Linux, Steam with Phantom Blade Zero installed, `curl`, `unzip`, `python3`, and `pgrep`. Steam is detected in `~/.local/share/Steam` or `~/.steam/steam`; game installs in additional libraries listed in Steam's `libraryfolders.vdf` are supported. The app manifest determines the active install location; the conventional `common/PBZ` path is used only if no manifest exists. GE-Proton in `compatibilitytools.d` is required for the normal direct-launch options; the Steam launch wrapper uses the compatibility tool selected in Steam.
+## Menu
 
-After installing, choose **Launch** from the menu or start the game through Steam. Once you have created your first save, close the game and run PBZ-Fix again; option 1 will check and repair the save location if needed, while keeping the Steam launch wrapper configured.
+1. **Install/repair and set up Steam launch** — Close Steam, install or verify the fix, check saves, and set up the wrapper.
+2. **Force reinstall/update** — Reinstall the fix and check saves; does not close Steam or set up the wrapper.
+3. **Launch** — Launch directly with GE-Proton.
+4. **Launch with Proton logging** — Launch directly and write a Proton log.
+5. **Uninstall/restore** — Close Steam, restore backed-up Steam configuration, remove the PBZ wrapper, and restore game files.
+6. **Diagnostic log** — Save a report to the Desktop.
+7. **Status** — Show Steam, game, fix, GE-Proton, and backup status.
+8. **Undo save-folder link** — Restore the previous save-folder layout.
+9. **Undo Steam launch wrapper** — Close Steam and restore backed-up Steam configuration.
+0. **Exit**.
 
-### Steam launch wrapper
+## Steam launch and direct commands
 
-Run this one-line command from a terminal to set up Steam's launch option:
+Setup installs `steam-launch.sh` and its helpers in `~/.local/share/pbz-fix/` from one resolved commit. It replaces existing launch options automatically. The launch option is equivalent to:
+
+```text
+bash "$HOME/.local/share/pbz-fix/steam-launch.sh" %command%
+```
+
+The saved option contains the resolved absolute path (for example, `/home/deck/...`). The wrapper verifies or installs the fix, checks saves, and redirects Steam's game executable while preserving Steam's command and arguments.
+
+To run setup without the menu:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/main/install-pbz-fix.sh | bash -s -- --setup-steam-launch
 ```
 
-The installer shuts Steam down cleanly, then applies or verifies the fix and configures the launch option in the same run. Save and close any running game before starting. If Steam cannot be shut down, close it completely by hand and retry. It downloads `install-pbz-fix.sh`, `steam-launch.sh`, and the config helper into `~/.local/share/pbz-fix/`, all from the same resolved commit. It backs up each affected `localconfig.vdf` before setting this launch option:
+Replace `--setup-steam-launch` with `--undo-steam-launch` to undo the wrapper, or `--uninstall` to uninstall. These actions also close Steam automatically. If Steam will not close, close it manually and retry.
 
-```text
-bash "/home/deck/.local/share/pbz-fix/steam-launch.sh" %command%
-```
+## Backups and recovery
 
-The wrapper verifies or installs the fix, redirects Steam's `steam/PBZ.exe` executable argument to `platform/steam/PBZ.exe`, and hands Steam its original command and arguments. Steam continues using its selected compatibility tool. Arguments and paths containing spaces are preserved. Setup replaces existing launch options automatically and backs up each config before changing it; undo restores the original backup. To undo the setup, run:
+- **Game files:** `~/pbz-backup-*`; uninstall uses the original restore point linked to that game directory. Legacy backups may not remove every added file.
+- **Steam configuration:** `~/.local/share/pbz-fix/backups/`; setup backs up each affected `localconfig.vdf` before changing it. Undo and uninstall restore the **entire original file**, not just launch options, so later Steam settings in that file may be overwritten. Backup files and downloaded scripts remain. A customized PBZ wrapper may need manual removal before uninstall.
+- **Saves:** `~/pbz-save-backup-*`; save repair backs up existing folders before linking and does not merge or delete saves. Option 8 undoes the link; the backup remains. PBZ-Fix cannot verify cloud uploads.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/main/install-pbz-fix.sh | bash -s -- --undo-steam-launch
-```
+## Troubleshooting
 
-Undo restores the backed-up Steam config files and removes the launch-option change. The downloaded scripts and backups remain in `~/.local/share/pbz-fix/`.
+Option 6 writes a diagnostic report to the Desktop; review its local paths before sharing. Option 4 writes `~/steam-4115450.log`. A GE-Proton ProtonFixes warning about “probably running a unit test” is benign.
 
-## Backups and uninstall
-
-Before installing, PBZ-Fix backs up files it will replace to `~/pbz-backup-YYYYMMDD-HHMMSS`. Each game directory tracks its own original restore point across reinstalls; backups from another Steam library or game copy are never selected as a fallback.
-
-Choose **Uninstall/restore** from the menu to restore the original files and backed-up Steam configuration, including launch options, and remove any standard PBZ launch wrapper. Customized PBZ launch options may need manual removal before uninstall. Older backups made before full-file tracking may contain only `PBZ.exe` and `steam_api64.dll`; the menu warns if it finds one. Steam's **Verify integrity of game files** can restore official files, but may not remove extra files left by an older fix.
-
-After the first game save exists, run PBZ-Fix again and choose **Install/repair, check saves, and set up Steam launch** (or run `install-pbz-fix.sh --fix-save-link` to repair saves without checking the fix installation). It checks Steam's active account and all game libraries, including microSD installs. If saves are in a different Steam ID folder, it copies each existing source and expected folder to `~/pbz-save-backup-*`, moves the old expected folder aside, and links the expected folder to the saves. It verifies readable files through the link and never merges over or deletes existing saves. Steam IDs are read locally and are not printed in status or diagnostics. Choose **Undo save-folder link** (or run `install-pbz-fix.sh --undo-save-link`) to restore the original folder layout; the safety copy is retained. The script verifies filesystem access but cannot confirm that a cloud upload has completed.
-
-## Logs and troubleshooting
-
-Routine actions do not create log files. Choose **Diagnostic log** to save a report to the Desktop, or **Launch with Proton logging** to create `~/steam-4115450.log`. Review diagnostic reports before sharing; they include local file paths.
-
-GE-Proton may print a ProtonFixes warning saying it is “probably running a unit test.” This comes from GE-Proton's game-fix detection when PBZ-Fix launches with `proton run`; it does not mean PBZ-Fix is running a test.
-
-## Patch notes and support
-
-See the [changelog](CHANGELOG.md) for updates. Report problems in [repository issues](https://github.com/Timmybread22/pbz-fix/issues).
+See the [changelog](CHANGELOG.md) or report problems in [repository issues](https://github.com/Timmybread22/pbz-fix/issues).
