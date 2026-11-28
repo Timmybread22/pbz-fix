@@ -20,13 +20,13 @@ When piped into Bash, the installer checks its version against `main` and runs t
 2. **Force reinstall/update** — Downloads and installs the fix again, then checks for misplaced saves.
 3. **Launch** — Starts the game without reinstalling.
 4. **Launch with Proton logging** — Starts the game and asks Proton to write a debug log.
-5. **Uninstall/restore** — Restores files from the original backup and removes files added by the fix.
+5. **Uninstall/restore** — With confirmation, closes Steam, restores backed-up Steam configuration, removes the PBZ launch wrapper, and restores original game files.
 6. **Diagnostic log** — Saves a system and install report to your Desktop.
 7. **Status** — Shows Steam, game, GE-Proton, and fix status.
 8. **Undo save-folder link** — Restores the save-folder layout from before the link was made.
 9. **Undo Steam launch wrapper** — Restores the previous Steam launch options.
 
-> **Requirements:** Linux, Steam with Phantom Blade Zero installed, `curl`, and `unzip`. Steam is detected in `~/.local/share/Steam` or `~/.steam/steam`; game installs in additional libraries listed in Steam's `libraryfolders.vdf` are supported. The app manifest determines the active install location; the conventional `common/PBZ` path is used only if no manifest exists. GE-Proton in `compatibilitytools.d` is required for the normal direct-launch options; the Steam launch wrapper uses the compatibility tool selected in Steam.
+> **Requirements:** Linux, Steam with Phantom Blade Zero installed, `curl`, `unzip`, `python3`, and `pgrep`. Steam is detected in `~/.local/share/Steam` or `~/.steam/steam`; game installs in additional libraries listed in Steam's `libraryfolders.vdf` are supported. The app manifest determines the active install location; the conventional `common/PBZ` path is used only if no manifest exists. GE-Proton in `compatibilitytools.d` is required for the normal direct-launch options; the Steam launch wrapper uses the compatibility tool selected in Steam.
 
 After installing, choose **Launch** from the menu or start the game through Steam. Once you have created your first save, close the game and run PBZ-Fix again; option 1 will check and repair the save location if needed, while keeping the Steam launch wrapper configured.
 
@@ -56,7 +56,7 @@ Undo restores the backed-up Steam config files and removes the launch-option cha
 
 Before installing, PBZ-Fix backs up files it will replace to `~/pbz-backup-YYYYMMDD-HHMMSS`. Each game directory tracks its own original restore point across reinstalls; backups from another Steam library or game copy are never selected as a fallback.
 
-Choose **Uninstall/restore** from the menu to restore the original files. Older backups made before full-file tracking may contain only `PBZ.exe` and `steam_api64.dll`; the menu warns if it finds one. Steam's **Verify integrity of game files** can restore official files, but may not remove extra files left by an older fix.
+Choose **Uninstall/restore** from the menu to restore the original files and backed-up Steam configuration, including launch options, and remove any standard PBZ launch wrapper. Customized PBZ launch options may need manual removal before uninstall. Older backups made before full-file tracking may contain only `PBZ.exe` and `steam_api64.dll`; the menu warns if it finds one. Steam's **Verify integrity of game files** can restore official files, but may not remove extra files left by an older fix.
 
 After the first game save exists, run PBZ-Fix again and choose **Install/repair, check saves, and set up Steam launch** (or run `install-pbz-fix.sh --fix-save-link` to repair saves without checking the fix installation). It checks Steam's active account and all game libraries, including microSD installs. If saves are in a different Steam ID folder, it copies each existing source and expected folder to `~/pbz-save-backup-*`, moves the old expected folder aside, and links the expected folder to the saves. It verifies readable files through the link and never merges over or deletes existing saves. Steam IDs are read locally and are not printed in status or diagnostics. Choose **Undo save-folder link** (or run `install-pbz-fix.sh --undo-save-link`) to restore the original folder layout; the safety copy is retained. The script verifies filesystem access but cannot confirm that a cloud upload has completed.
 

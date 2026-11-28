@@ -68,6 +68,10 @@ Initial release.
 
 - Check for a newer installer when running from a pipe, with an opt-out and an offline fallback.
 
+### Installer update — 2026-11-27 (v2.14)
+
+- Confirm uninstall before closing Steam, restoring backed-up Steam configuration, removing the launch wrapper, and restoring game files.
+
 ### Installer update — 2026-11-24
 
 - Fixed downloading the latest release when the GitHub CLI is installed and authenticated.

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.13"
+SCRIPT_VERSION="2.14"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
@@ -792,7 +792,7 @@ confirm_steam_shutdown() {
         fail "Steam shutdown requires an interactive terminal."
 
     printf '%s\n' \
-        "PBZ-Fix needs Steam closed to apply the fix and change launch options."
+        "PBZ-Fix needs Steam closed before changing game files or Steam settings."
     IFS= read -r -p "Save and close any running game. Shut down Steam now? [y/N] " \
         answer </dev/tty ||
         fail "Could not read confirmation from the terminal."
@@ -907,20 +907,80 @@ setup_steam_launch() {
 }
 
 undo_steam_launch() {
-    local install_dir="$HOME/.local/share/pbz-fix"
-
     require_command python3
     require_command pgrep
     if ! detect_steam; then
         fail "Steam could not be found."
     fi
     close_steam
+    restore_steam_launch
+}
+
+restore_steam_launch() {
+    local install_dir="$HOME/.local/share/pbz-fix"
+
     [[ -f "$install_dir/steam-launch-config.py" ]] ||
         fail "Steam launch setup files were not found in $install_dir."
 
     python3 "$install_dir/steam-launch-config.py" undo \
         --steam-root "$STEAM_ROOT" \
-        --install-dir "$install_dir"
+        --install-dir "$install_dir" ||
+        fail "Could not restore the Steam launch configuration."
+}
+
+remove_steam_wrapper() {
+    if ! python3 - "$STEAM_ROOT" "$HOME/.local/share/pbz-fix" <<'PY'
+import importlib.util
+import shlex
+import sys
+from pathlib import Path
+
+steam_root = Path(sys.argv[1])
+helper_path = Path(sys.argv[2]) / "steam-launch-config.py"
+names = ("steam-launch.sh", "steam-launch-beta.sh")
+configs = sorted((steam_root / "userdata").glob("*/config/localconfig.vdf"))
+
+try:
+    texts = [(path, path.read_text(encoding="utf-8")) for path in configs]
+    relevant = [(path, text) for path, text in texts if any(name in text for name in names)]
+    if not relevant:
+        print("No Steam launch wrapper found.")
+        sys.exit(0)
+    if not helper_path.is_file():
+        raise ValueError("Steam launch helper is missing. Remove the PBZ wrapper manually, then retry.")
+    spec = importlib.util.spec_from_file_location("pbz_steam_launch_config", helper_path)
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    plans = []
+    for path, text in relevant:
+        _, _, options = helper.app_settings(text)
+        if not options:
+            continue
+        option = options[0]
+        value = option["value"]
+        if not any(name in value for name in names):
+            continue
+        try:
+            args = shlex.split(value)
+        except ValueError:
+            args = []
+        direct = len(args) == 2 and Path(args[0]).name in names and args[1] == "%command%"
+        shell = (len(args) == 3 and Path(args[0]).name in ("bash", "sh")
+                 and Path(args[1]).name in names and args[2] == "%command%")
+        if not (direct or shell):
+            raise ValueError("A customized PBZ launch option requires manual removal before uninstall.")
+        updated = text[:option["value_start"]] + '""' + text[option["value_end"]:]
+        plans.append((path, updated))
+    for path, updated in plans:
+        helper.atomic_write(path, updated.encode("utf-8"), path.stat().st_mode)
+    print(f"Removed the Steam launch wrapper for {len(plans)} account(s).")
+except (OSError, ValueError, ImportError) as error:
+    print(f"Steam launch cleanup failed: {error}", file=sys.stderr)
+    sys.exit(1)
+PY
+    then
+        fail "Could not remove the Steam launch wrapper; game files were not uninstalled."
+    fi
 }
 
 launch_game() {
@@ -996,14 +1056,39 @@ uninstall_fix() {
         fail "No restore point is linked to this game directory. Refusing to select an unrelated backup."
 
     log "Selected backup: $backup_dir"
-    if ! confirm_action "Restore this backup and remove the fix files?"; then
+    if ! confirm_action "Restore game files and backed-up Steam configuration, and remove the PBZ launch wrapper?"; then
         log "Uninstall cancelled."
         return 0
+    fi
+
+    require_command pgrep
+    require_command python3
+    close_steam
+
+    if [[ -e "$HOME/.local/share/pbz-fix/steam-launch-backup.json" ||
+          -L "$HOME/.local/share/pbz-fix/steam-launch-backup.json" ]]; then
+        if steam_is_running; then
+            fail "Steam restarted. Close it completely by hand, then retry."
+        fi
+        restore_steam_launch
+    else
+        log "No Steam launch backup found; checking for an existing PBZ wrapper."
+    fi
+
+    if steam_is_running; then
+        fail "Steam restarted. Close it completely by hand, then retry."
+    fi
+    remove_steam_wrapper
+    if steam_is_running; then
+        fail "Steam restarted. Close it completely by hand, then retry."
     fi
 
     managed_list="$backup_dir/.pbz-fix-managed-files.nul"
     if [[ -f "$managed_list" ]]; then
         while IFS= read -r -d '' relative_path; do
+            if steam_is_running; then
+                fail "Steam restarted during uninstall. Close it completely by hand, then retry."
+            fi
             if [[ "$relative_path" != steam/* &&
                   "$relative_path" != platform/* ]]; then
                 fail "Backup contains an invalid managed path: $relative_path"
@@ -1013,11 +1098,14 @@ uninstall_fix() {
             game_file="$GAME_DIR/$relative_path"
 
             if [[ -f "$backup_file" || -L "$backup_file" ]]; then
-                mkdir -p "$(dirname "$game_file")"
-                cp -a -- "$backup_file" "$game_file"
+                mkdir -p "$(dirname "$game_file")" ||
+                    fail "Could not prepare the directory for $relative_path."
+                cp -a -- "$backup_file" "$game_file" ||
+                    fail "Could not restore $relative_path."
                 log "Restored $relative_path"
             elif [[ -f "$game_file" || -L "$game_file" ]]; then
-                rm -f -- "$game_file"
+                rm -f -- "$game_file" ||
+                    fail "Could not remove $relative_path."
                 log "Removed fix-added file $relative_path"
             fi
         done < "$managed_list"
@@ -1025,11 +1113,16 @@ uninstall_fix() {
         log "WARNING: This is a legacy backup; restoring only the files it contains."
         log "Other files added by the fix may remain in the game folder."
         for relative_path in "${fallback_files[@]}"; do
+            if steam_is_running; then
+                fail "Steam restarted during uninstall. Close it completely by hand, then retry."
+            fi
             backup_file="$backup_dir/$relative_path"
             if [[ -f "$backup_file" || -L "$backup_file" ]]; then
                 game_file="$GAME_DIR/$relative_path"
-                mkdir -p "$(dirname "$game_file")"
-                cp -a -- "$backup_file" "$game_file"
+                mkdir -p "$(dirname "$game_file")" ||
+                    fail "Could not prepare the directory for $relative_path."
+                cp -a -- "$backup_file" "$game_file" ||
+                    fail "Could not restore $relative_path."
                 log "Restored $relative_path"
             fi
         done
@@ -1037,8 +1130,10 @@ uninstall_fix() {
 
     rm -f -- \
         "$GAME_DIR/.pbz-fix-install-revision" \
-        "$GAME_DIR/.pbz-fix-files.sha256" \
-        "$GAME_DIR/.pbz-fix-original-backup"
+        "$GAME_DIR/.pbz-fix-files.sha256" ||
+        fail "Could not remove the installation metadata."
+    rm -f -- "$GAME_DIR/.pbz-fix-original-backup" ||
+        fail "Could not remove the original backup pointer."
     log "Uninstall/restore completed. Backup retained at $backup_dir"
 }
 
