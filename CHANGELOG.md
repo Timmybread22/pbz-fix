@@ -56,6 +56,10 @@ Initial release.
 - Fix launch-option replacement prompts when the installer is piped into Bash.
 - Automatically replace previous PBZ wrapper launch options while confirming unrelated options.
 
+### Documentation update — 2026-11-27
+
+- Use the moving `main` URL for the README install command instead of a pinned installer revision.
+
 ### Installer update — 2026-11-24
 
 - Fixed downloading the latest release when the GitHub CLI is installed and authenticated.
