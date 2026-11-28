@@ -36,7 +36,7 @@ Run this one-line command from a terminal to set up Steam's launch option:
 curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/main/install-pbz-fix.sh | bash -s -- --setup-steam-launch
 ```
 
-The installer asks permission to shut Steam down cleanly, then applies or verifies the fix and configures the launch option in the same run. It downloads `install-pbz-fix.sh`, `steam-launch-beta.sh`, and the config helper into `~/.local/share/pbz-fix/`, all from the same resolved commit. It backs up each affected `localconfig.vdf` before setting this launch option:
+The installer asks permission to shut Steam down cleanly, then applies or verifies the fix and configures the launch option in the same run. If Steam cannot be shut down, close it completely by hand and retry. It downloads `install-pbz-fix.sh`, `steam-launch-beta.sh`, and the config helper into `~/.local/share/pbz-fix/`, all from the same resolved commit. It backs up each affected `localconfig.vdf` before setting this launch option:
 
 ```text
 bash "/home/deck/.local/share/pbz-fix/steam-launch-beta.sh" %command%

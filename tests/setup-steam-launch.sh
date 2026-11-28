@@ -8,7 +8,9 @@ trap 'rm -rf -- "$TEST_ROOT"' EXIT
 export HOME="$TEST_ROOT/home"
 export FIX_ZIP="$TEST_ROOT/fix.zip"
 export TEST_STEAM_RUNNING="$TEST_ROOT/steam-running"
-mkdir -p "$HOME/.local/share/Steam/steamapps/common/PBZ Game"
+export PYTHONDONTWRITEBYTECODE=1
+mkdir -p "$HOME/.local/share/Steam/steamapps/common/PBZ Game" "$TEST_ROOT/bin"
+export PATH="$TEST_ROOT/bin:$PATH"
 
 STEAM_ROOT="$HOME/.local/share/Steam"
 GAME_DIR="$STEAM_ROOT/steamapps/common/PBZ Game"
@@ -16,12 +18,13 @@ INSTALL_DIR="$HOME/.local/share/pbz-fix"
 CONFIG="$STEAM_ROOT/userdata/100/config/localconfig.vdf"
 TEST_REVISION="0123456789abcdef0123456789abcdef01234567"
 
-cat > "$STEAM_ROOT/steam" <<'EOF'
+mkdir "$STEAM_ROOT/steam"
+cat > "$TEST_ROOT/bin/steam" <<'EOF'
 #!/usr/bin/env bash
 [[ "${1:-}" == "-shutdown" ]] || exit 1
 rm -f -- "$TEST_STEAM_RUNNING"
 EOF
-chmod +x "$STEAM_ROOT/steam"
+chmod +x "$TEST_ROOT/bin/steam"
 touch "$TEST_STEAM_RUNNING"
 
 cat > "$STEAM_ROOT/steamapps/appmanifest_4115450.acf" <<'EOF'
@@ -69,6 +72,7 @@ PY
 
 # shellcheck source=../install-pbz-fix.sh
 source "$REPO_ROOT/install-pbz-fix.sh"
+STEAM_ROOT="$HOME/.local/share/Steam"
 
 confirm_steam_shutdown() {
     SHUTDOWN_CONFIRMED=1
@@ -117,6 +121,50 @@ curl() {
             ;;
     esac
 }
+
+# A failed PATH launcher must fall back to steam.sh without invoking the steam directory.
+cat > "$STEAM_ROOT/steam.sh" <<'EOF'
+#!/usr/bin/env bash
+[[ "${1:-}" == "-shutdown" ]] || exit 1
+rm -f -- "$TEST_STEAM_RUNNING"
+EOF
+chmod +x "$STEAM_ROOT/steam.sh"
+mv "$TEST_ROOT/bin/steam" "$TEST_ROOT/bin/steam-success"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TEST_ROOT/bin/steam"
+chmod +x "$TEST_ROOT/bin/steam"
+close_steam
+[[ ! -e "$TEST_STEAM_RUNNING" ]]
+mv "$TEST_ROOT/bin/steam-success" "$TEST_ROOT/bin/steam"
+
+# An accepted request that never stops Steam must fail before setup can continue.
+touch "$TEST_STEAM_RUNNING"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_ROOT/bin/steam"
+chmod +x "$TEST_ROOT/bin/steam"
+if output="$(sleep() { :; }; close_steam 2>&1)"; then
+    printf 'A Steam shutdown timeout was accepted.\n' >&2
+    exit 1
+fi
+[[ "$output" == *"Close it completely by hand, then retry."* ]]
+[[ -e "$TEST_STEAM_RUNNING" ]]
+
+mkdir -p "$TEST_ROOT/no-launcher/steam"
+if output="$(
+    STEAM_ROOT="$TEST_ROOT/no-launcher"
+    type() { return 1; }
+    close_steam 2>&1
+)"; then
+    printf 'A missing Steam launcher was accepted.\n' >&2
+    exit 1
+fi
+[[ "$output" == *"Close it completely by hand, then retry."* ]]
+[[ -e "$TEST_STEAM_RUNNING" ]]
+
+cat > "$TEST_ROOT/bin/steam" <<'EOF'
+#!/usr/bin/env bash
+[[ "${1:-}" == "-shutdown" ]] || exit 1
+rm -f -- "$TEST_STEAM_RUNNING"
+EOF
+chmod +x "$TEST_ROOT/bin/steam"
 
 setup_steam_launch
 

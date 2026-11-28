@@ -47,6 +47,10 @@ Initial release.
 - Make menu option 1 perform the complete Steam setup and remove the separate setup menu item.
 - Keep Steam wrapper undo as menu option 9.
 
+### Installer update — 2026-11-27 (v2.10)
+
+- Use executable Steam launchers for clean shutdown, including when Steam's `steam` path is a directory.
+
 ### Installer update — 2026-11-24
 
 - Fixed downloading the latest release when the GitHub CLI is installed and authenticated.

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.9"
+SCRIPT_VERSION="2.10"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
@@ -803,7 +803,9 @@ confirm_steam_shutdown() {
 
 close_steam() {
     local steam_command
+    local path_command
     local attempt
+    local -a candidates=()
 
     if ! steam_is_running; then
         log "Steam is already closed."
@@ -812,28 +814,35 @@ close_steam() {
 
     confirm_steam_shutdown
 
-    if [[ -x "$STEAM_ROOT/steam" ]]; then
-        steam_command="$STEAM_ROOT/steam"
-    else
-        steam_command="$(command -v steam || true)"
-    fi
-    [[ -n "$steam_command" ]] ||
-        fail "Could not find Steam's command to request a clean shutdown."
-
     require_command sleep
+    path_command="$(type -P steam || true)"
+    candidates=("$path_command" "$STEAM_ROOT/steam.sh" "$STEAM_ROOT/ubuntu12_32/steam")
     log "Requesting a clean Steam shutdown..."
-    "$steam_command" -shutdown ||
-        fail "Steam did not accept the shutdown request."
+    for steam_command in "${candidates[@]}"; do
+        [[ -f "$steam_command" && -x "$steam_command" ]] || continue
+        if "$steam_command" -shutdown; then
+            for ((attempt = 0; attempt < 30; attempt++)); do
+                if ! steam_is_running; then
+                    log "Steam has closed."
+                    return 0
+                fi
+                sleep 1
+            done
+            if ! steam_is_running; then
+                log "Steam has closed."
+                return 0
+            fi
+            fail "Steam is still running. Close it completely by hand, then retry."
+        fi
 
-    for ((attempt = 0; attempt < 30; attempt++)); do
         if ! steam_is_running; then
             log "Steam has closed."
             return 0
         fi
-        sleep 1
+        log "Steam shutdown command failed: $steam_command"
     done
 
-    fail "Steam is still running. Close it completely, then retry."
+    fail "Could not shut down Steam. Close it completely by hand, then retry."
 }
 
 setup_steam_launch() {
