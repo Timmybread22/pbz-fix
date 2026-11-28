@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 import argparse
+import errno
 import json
 import os
 import re
+import shlex
 import shutil
 import sys
 import tempfile
+from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
 
@@ -195,6 +198,21 @@ def write_manifest(path, manifest):
     atomic_write(path, data, 0o600)
 
 
+def is_previous_pbz_wrapper(option):
+    try:
+        args = shlex.split(option)
+    except ValueError:
+        return False
+    if len(args) == 2 and args[1] == "%command%":
+        return Path(args[0]).name == "steam-launch-beta.sh"
+    if len(args) == 3 and args[2] == "%command%":
+        return (
+            Path(args[0]).name in ("bash", "sh")
+            and Path(args[1]).name == "steam-launch-beta.sh"
+        )
+    return False
+
+
 def setup_launch_options(steam_root, install_dir, prompt_replace):
     steam_root = Path(steam_root).resolve()
     install_dir = Path(install_dir).resolve()
@@ -219,7 +237,11 @@ def setup_launch_options(steam_root, install_dir, prompt_replace):
         current = options[0]["value"] if options else None
         if current == launch_option:
             continue
-        if current is not None and not prompt_replace(path):
+        if (
+            current is not None
+            and not is_previous_pbz_wrapper(current)
+            and not prompt_replace(path)
+        ):
             print(f"Skipped existing launch options for Steam user {path.parts[-3]}.")
             continue
         updated = set_app_option(text, apps, app, options, launch_option)
@@ -298,18 +320,28 @@ def undo_launch_options(steam_root, install_dir):
 
 
 def ask_replace(path):
-    try:
-        with open("/dev/tty", "r+", encoding="utf-8") as terminal:
-            terminal.write(
+    with ExitStack() as stack:
+        try:
+            terminal_in = stack.enter_context(open("/dev/tty", "r", encoding="utf-8"))
+            terminal_out = stack.enter_context(open("/dev/tty", "w", encoding="utf-8"))
+        except OSError as error:
+            if error.errno in (errno.ENXIO, errno.ENODEV, errno.ENOENT):
+                raise ValueError(
+                    "Replacing existing Steam launch options requires a controlling terminal."
+                ) from error
+            raise ValueError(f"Could not open the terminal: {error}") from error
+        try:
+            terminal_out.write(
                 f"Launch options already exist for Steam user {path.parts[-3]}. "
                 "Replace them? [y/N] "
             )
-            terminal.flush()
-            return terminal.readline().strip().lower() in ("y", "yes")
-    except OSError as error:
-        raise ValueError(
-            "Replacing existing Steam launch options requires an interactive terminal."
-        ) from error
+            terminal_out.flush()
+            answer = terminal_in.readline()
+        except OSError as error:
+            raise ValueError(f"Could not read or write the terminal: {error}") from error
+        if not answer:
+            raise ValueError("Could not read confirmation from the terminal.")
+        return answer.strip().lower() in ("y", "yes")
 
 
 def main():

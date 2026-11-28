@@ -42,7 +42,7 @@ The installer asks permission to shut Steam down cleanly, then applies or verifi
 bash "/home/deck/.local/share/pbz-fix/steam-launch-beta.sh" %command%
 ```
 
-The wrapper verifies or installs the fix, redirects Steam's `steam/PBZ.exe` executable argument to `platform/steam/PBZ.exe`, and hands Steam its original command and arguments. Steam continues using its selected compatibility tool. Arguments and paths containing spaces are preserved. If Steam launch options already contain a different value, setup asks before replacing it. To undo the setup, close Steam and run:
+The wrapper verifies or installs the fix, redirects Steam's `steam/PBZ.exe` executable argument to `platform/steam/PBZ.exe`, and hands Steam its original command and arguments. Steam continues using its selected compatibility tool. Arguments and paths containing spaces are preserved. Setup automatically replaces a standard previous PBZ wrapper and asks before replacing other launch options. To undo the setup, close Steam and run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/main/install-pbz-fix.sh | bash -s -- --undo-steam-launch

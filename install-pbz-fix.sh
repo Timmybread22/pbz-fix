@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.10"
+SCRIPT_VERSION="2.11"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"

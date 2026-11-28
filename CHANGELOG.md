@@ -51,6 +51,11 @@ Initial release.
 
 - Use executable Steam launchers for clean shutdown, including when Steam's `steam` path is a directory.
 
+### Installer update — 2026-11-27 (v2.11)
+
+- Fix launch-option replacement prompts when the installer is piped into Bash.
+- Automatically replace previous PBZ wrapper launch options while confirming unrelated options.
+
 ### Installer update — 2026-11-24
 
 - Fixed downloading the latest release when the GitHub CLI is installed and authenticated.
