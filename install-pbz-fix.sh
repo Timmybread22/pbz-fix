@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.5"
+SCRIPT_VERSION="2.6-beta"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
@@ -100,34 +100,52 @@ manifest_install_dir() {
     ' "$manifest"
 }
 
+steam_library_roots() {
+    local library_folders="$STEAM_ROOT/steamapps/libraryfolders.vdf"
+
+    printf '%s\n' "$STEAM_ROOT"
+    [[ -r "$library_folders" ]] || return 0
+
+    awk -F '"' '
+        tolower($2) == "path" && $4 ~ /^\// {
+            print $4
+        }
+    ' "$library_folders"
+}
+
 find_game_directory() {
     local library
     local manifest
     local manifest_dir
     local install_dir
     local game_candidate
+    local -a libraries=()
     local -a manifests=()
 
-    for library in "${STEAM_LIBRARIES[@]}"; do
-        game_candidate="$library/steamapps/common/PBZ"
-        if [[ -d "$game_candidate" ]]; then
-            GAME_DIR="$game_candidate"
-            GAME_LIBRARY="$library"
-            log "Found game directory: $GAME_DIR"
-            return 0
-        fi
+    while IFS= read -r library; do
+        [[ "$library" == /* && -d "$library/steamapps" ]] || continue
+        libraries+=("$library")
+    done < <(steam_library_roots)
 
-        manifest="$library/steamapps/appmanifest_${APP_ID}.acf"
-        if [[ -f "$manifest" ]]; then
+    for library in "${libraries[@]}"; do
+        while IFS= read -r -d '' manifest; do
             manifests+=("$manifest")
-        fi
+        done < <(
+            find "$library/steamapps" \
+                -type f \
+                -name "appmanifest_${APP_ID}.acf" \
+                -print0 2>/dev/null
+        )
     done
 
     for manifest in "${manifests[@]}"; do
         manifest_dir="$(dirname "$manifest")"
         install_dir="$(manifest_install_dir "$manifest")"
 
-        if [[ -n "$install_dir" ]]; then
+        if [[ -n "$install_dir" &&
+              "$install_dir" != "." &&
+              "$install_dir" != ".." &&
+              "$install_dir" != */* ]]; then
             game_candidate="$manifest_dir/common/$install_dir"
             if [[ -d "$game_candidate" ]]; then
                 GAME_DIR="$game_candidate"
@@ -135,6 +153,20 @@ find_game_directory() {
                 log "Found game directory through app manifest: $GAME_DIR"
                 return 0
             fi
+        fi
+    done
+
+    if ((${#manifests[@]} > 0)); then
+        return 1
+    fi
+
+    for library in "${libraries[@]}"; do
+        game_candidate="$library/steamapps/common/PBZ"
+        if [[ -d "$game_candidate" ]]; then
+            GAME_DIR="$game_candidate"
+            GAME_LIBRARY="$library"
+            log "Found game directory without an app manifest: $GAME_DIR"
+            return 0
         fi
     done
 
@@ -540,14 +572,12 @@ create_backups() {
     local extract_dir="$1"
     local timestamp
     local backup_dir
-    local prior_backup
     local original_backup
     local backup_pointer="$GAME_DIR/.pbz-fix-original-backup"
     local backup_pointer_temp="$backup_pointer.tmp.$$"
     local source
     local destination
 
-    prior_backup="$(latest_backup)"
     timestamp="$(date '+%Y%m%d-%H%M%S')"
     backup_dir="$HOME/pbz-backup-$timestamp"
     if ! mkdir -- "$backup_dir" 2>/dev/null; then
@@ -573,20 +603,10 @@ create_backups() {
     original_backup="$backup_dir"
     if [[ -r "$backup_pointer" ]]; then
         IFS= read -r original_backup < "$backup_pointer" || original_backup=""
-    elif [[ -n "$prior_backup" && -d "$prior_backup" ]]; then
-        original_backup="$prior_backup"
     fi
 
-    case "$original_backup" in
-        "$HOME"/pbz-backup-*)
-            if [[ ! -d "$original_backup" ]]; then
-                original_backup="$backup_dir"
-            fi
-            ;;
-        *)
-            original_backup="$backup_dir"
-            ;;
-    esac
+    backup_directory_is_valid "$original_backup" ||
+        original_backup="$backup_dir"
 
     printf '%s\n' "$original_backup" > "$backup_pointer_temp"
     mv -- "$backup_pointer_temp" "$backup_pointer"
@@ -716,9 +736,7 @@ launch_detected_game() {
     return "$launch_status"
 }
 
-install_fix() {
-    prepare_game
-
+install_or_repair_fix() {
     if fix_is_installed; then
         log "Fix is already installed and verified; skipping download and installation."
     else
@@ -738,6 +756,11 @@ install_fix() {
         write_install_manifest "$TEMP_DIR/extracted"
         log "Post-install verification passed."
     fi
+}
+
+install_fix() {
+    prepare_runtime
+    install_or_repair_fix
 
     prepare_save_link
     cleanup
@@ -778,6 +801,14 @@ latest_backup() {
     fi
 }
 
+backup_directory_is_valid() {
+    local backup_dir="$1"
+
+    [[ -d "$backup_dir" &&
+       "$(dirname "$backup_dir")" == "$HOME" &&
+       "$(basename "$backup_dir")" == pbz-backup-* ]]
+}
+
 confirm_action() {
     local prompt="$1"
     local answer
@@ -805,22 +836,11 @@ uninstall_fix() {
     backup_pointer="$GAME_DIR/.pbz-fix-original-backup"
     if [[ -r "$backup_pointer" ]]; then
         IFS= read -r backup_dir < "$backup_pointer" || backup_dir=""
-        case "$backup_dir" in
-            "$HOME"/pbz-backup-*)
-                [[ -d "$backup_dir" ]] || backup_dir=""
-                ;;
-            *)
-                backup_dir=""
-                ;;
-        esac
-    fi
-
-    if [[ -z "$backup_dir" ]]; then
-        backup_dir="$(latest_backup)"
+        backup_directory_is_valid "$backup_dir" || backup_dir=""
     fi
 
     [[ -n "$backup_dir" ]] ||
-        fail "No PBZ backup directory was found under $HOME."
+        fail "No restore point is linked to this game directory. Refusing to select an unrelated backup."
 
     log "Selected backup: $backup_dir"
     if ! confirm_action "Restore this backup and remove the fix files?"; then
@@ -983,6 +1003,20 @@ BANNER
     printf 'Version %s\n\n' "$SCRIPT_VERSION"
 }
 
+check_requirements() {
+    require_command unzip
+    require_command find
+    require_command cp
+    require_command mkdir
+    require_command sed
+    require_command awk
+    require_command grep
+    require_command mktemp
+    require_command date
+    require_command sha256sum
+    require_command sort
+}
+
 run_action() {
     local action_name="$1"
 
@@ -1047,17 +1081,7 @@ show_menu() {
 }
 
 main() {
-    require_command unzip
-    require_command find
-    require_command cp
-    require_command mkdir
-    require_command sed
-    require_command awk
-    require_command grep
-    require_command mktemp
-    require_command date
-    require_command sha256sum
-    require_command sort
+    check_requirements
 
     case "${1:-}" in
         --install) run_action "Install/update" install_fix ;;
@@ -1087,4 +1111,6 @@ main() {
     esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

@@ -29,6 +29,12 @@ Initial release.
 - Combined save-file checking with install/repair so the same menu option can be rerun after the first save.
 - Kept a separate save-repair command for users who only want to repair save files.
 
+### Beta Steam launch wrapper
+
+- Added a beta wrapper that installs/verifies the fix, redirects Steam's executable argument to the working file, and then runs Steam's original `%command%`.
+- Prefer the app-manifest install path across Steam libraries, falling back to `common/PBZ` only when no app manifest exists.
+- Keep each game's original restore point associated with its game directory instead of selecting the newest home-directory backup.
+
 ### Installer update — 2026-11-24
 
 - Fixed downloading the latest release when the GitHub CLI is installed and authenticated.

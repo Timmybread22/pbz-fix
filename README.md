@@ -23,13 +23,23 @@ PBZ-Fix opens a numbered menu in the terminal. It is not a graphical app; keep t
 7. **Status** — Shows Steam, game, GE-Proton, and fix status.
 8. **Undo save-folder link** — Restores the save-folder layout from before the link was made.
 
-> **Requirements:** Linux, Steam with Phantom Blade Zero installed, `curl`, and `unzip`. GE-Proton in Steam's `compatibilitytools.d` directory is required only for PBZ-Fix's Launch options; you can also start the game directly through Steam. Steam is detected in `~/.local/share/Steam` or `~/.steam/steam`.
+> **Requirements:** Linux, Steam with Phantom Blade Zero installed, `curl`, and `unzip`. Steam is detected in `~/.local/share/Steam` or `~/.steam/steam`; game installs in additional libraries listed in Steam's `libraryfolders.vdf` are supported. The app manifest determines the active install location; the conventional `common/PBZ` path is used only if no manifest exists. GE-Proton in `compatibilitytools.d` is required for the normal direct-launch options; the beta wrapper uses the compatibility tool selected in Steam.
 
 After installing, choose **Launch** from the menu or start the game through Steam. Once you have created your first save, close the game and run PBZ-Fix again; option 1 will check and repair the save location if needed.
 
+### Beta: launch through Steam
+
+The normal **Launch** menu option starts GE-Proton directly. To let Steam run the game with its selected compatibility tool and launch settings, use the beta wrapper instead. Keep `steam-launch-beta.sh` and `install-pbz-fix.sh` together in a persistent folder, then set the game's Steam launch options to:
+
+```text
+bash "/home/deck/pbz-fix-beta/steam-launch-beta.sh" %command%
+```
+
+Replace the example path with the folder where you saved both scripts. The wrapper verifies or installs the fix before launch, redirects Steam's `steam/PBZ.exe` executable argument to `platform/steam/PBZ.exe`, and hands the original command and its arguments back to Steam. Arguments and paths containing spaces are preserved. If the original command does not contain exactly one matching executable argument, the wrapper stops with an error instead of launching the wrong file. Remove the launch option to return to the normal Steam launch.
+
 ## Backups and uninstall
 
-Before installing, PBZ-Fix backs up files it will replace to `~/pbz-backup-YYYYMMDD-HHMMSS`. The original restore point is retained during later reinstalls.
+Before installing, PBZ-Fix backs up files it will replace to `~/pbz-backup-YYYYMMDD-HHMMSS`. Each game directory tracks its own original restore point across reinstalls; backups from another Steam library or game copy are never selected as a fallback.
 
 Choose **Uninstall/restore** from the menu to restore the original files. Older backups made before full-file tracking may contain only `PBZ.exe` and `steam_api64.dll`; the menu warns if it finds one. Steam's **Verify integrity of game files** can restore official files, but may not remove extra files left by an older fix.
 
