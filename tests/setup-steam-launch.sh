@@ -152,4 +152,62 @@ mapfile -d '' -t captured_args < "$CAPTURE_ARGS"
 [[ "${captured_args[0]}" == "argument with spaces" ]]
 [[ "${captured_args[1]}" == "--custom=two words" ]]
 
+python3 - "$REPO_ROOT" <<'PY'
+import os
+import pty
+import select
+import sys
+import time
+
+repo_root = sys.argv[1]
+command = r'''
+source "$1/install-pbz-fix.sh"
+setup_steam_launch() { printf 'MOCK_SETUP_CALLED\n'; }
+install_fix() { printf 'WRONG_INSTALL_FIX_CALLED\n'; }
+show_menu
+'''
+child, terminal = pty.fork()
+if child == 0:
+    os.execlp("bash", "bash", "-c", command, "menu-option-test", repo_root)
+
+output = bytearray()
+os.write(terminal, b"1\n0\n")
+deadline = time.monotonic() + 10
+status = None
+while time.monotonic() < deadline:
+    ready, _, _ = select.select([terminal], [], [], 0.1)
+    if ready:
+        try:
+            output.extend(os.read(terminal, 4096))
+        except OSError:
+            break
+    result, child_status = os.waitpid(child, os.WNOHANG)
+    if result == child:
+        status = child_status
+        break
+
+if status is None:
+    os.kill(child, 9)
+    os.waitpid(child, 0)
+    raise AssertionError("Menu test process timed out.")
+
+while select.select([terminal], [], [], 0.1)[0]:
+    try:
+        chunk = os.read(terminal, 4096)
+    except OSError:
+        break
+    if not chunk:
+        break
+    output.extend(chunk)
+os.close(terminal)
+assert os.waitstatus_to_exitcode(status) == 0
+text = output.decode(errors="replace")
+assert "1) Install/repair, check saves, and set up Steam launch" in text
+assert "9) Undo Steam launch wrapper" in text
+assert "10) Undo Steam launch wrapper" not in text
+assert "9) Set up Steam launch wrapper" not in text
+assert "MOCK_SETUP_CALLED" in text
+assert "WRONG_INSTALL_FIX_CALLED" not in text
+PY
+
 printf 'Steam launch setup and wrapper tests passed.\n'

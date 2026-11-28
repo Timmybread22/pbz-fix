@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.8"
+SCRIPT_VERSION="2.9"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
@@ -1181,7 +1181,7 @@ show_menu() {
     while true; do
         print_banner
         printf '%s\n' \
-            "1) Install/repair and check saves (run again after your first save)" \
+            "1) Install/repair, check saves, and set up Steam launch" \
             "2) Force reinstall/update and check saves" \
             "3) Launch game" \
             "4) Launch game with Proton logging" \
@@ -1189,8 +1189,7 @@ show_menu() {
             "6) Create diagnostic log on Desktop" \
             "7) Show installation status" \
             "8) Undo save-folder link" \
-            "9) Set up Steam launch wrapper" \
-            "10) Undo Steam launch wrapper" \
+            "9) Undo Steam launch wrapper" \
             "0) Exit"
 
         if ! IFS= read -r -p $'\nSelect an option: ' choice </dev/tty; then
@@ -1200,7 +1199,8 @@ show_menu() {
 
         case "$choice" in
             1)
-                run_action "Install/update" install_fix || log "Install action failed."
+                run_action "Install/update and set up Steam launch" setup_steam_launch ||
+                    log "Install and Steam launch setup failed."
                 ;;
             2)
                 run_action "Force reinstall/update" force_install_fix ||
@@ -1218,8 +1218,7 @@ show_menu() {
             6) run_action "Diagnostic report" write_diagnostics || log "Diagnostic report failed." ;;
             7) run_action "Status report" show_status || log "Status report failed." ;;
             8) run_action "Undo save-folder link" undo_save_link || log "Save-link undo failed." ;;
-            9) run_action "Set up Steam launch wrapper" setup_steam_launch || log "Steam launch setup failed." ;;
-            10) run_action "Undo Steam launch wrapper" undo_steam_launch || log "Steam launch undo failed." ;;
+            9) run_action "Undo Steam launch wrapper" undo_steam_launch || log "Steam launch undo failed." ;;
             0) log "Goodbye."; return 0 ;;
             *) log "Choose one of the listed options." ;;
         esac
