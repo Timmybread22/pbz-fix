@@ -12,6 +12,8 @@ curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/main/install-p
 
 PBZ-Fix opens a numbered menu in the terminal. It is not a graphical app; keep the terminal open while using the menu. After launching the game, PBZ-Fix exits when the game closes.
 
+When piped into Bash, the installer checks its version against `main` and runs the latest commit's installer if the versions differ. If the check fails, it continues with the downloaded version; set `PBZ_FIX_NO_UPDATE=1` on the Bash command to skip the check. Installer changes must bump `SCRIPT_VERSION` for this check to detect them.
+
 ### Menu options
 
 1. **Install/repair, check saves, and set up Steam launch** — Requests permission to close Steam, applies or verifies the fix, checks for misplaced saves, and configures the launch wrapper in one run. Run it again after your first save; it does not start the game.

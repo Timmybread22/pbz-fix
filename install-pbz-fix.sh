@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.12"
+SCRIPT_VERSION="2.13"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
@@ -1236,7 +1236,65 @@ show_menu() {
     done
 }
 
+refresh_piped_installer() {
+    local revision
+    local update_file
+    local latest_version
+
+    [[ "${PBZ_FIX_NO_UPDATE:-0}" != "1" && "${PBZ_FIX_REEXEC:-0}" != "1" ]] || return 0
+    if ! command -v curl >/dev/null 2>&1 ||
+        ! command -v python3 >/dev/null 2>&1 ||
+        ! command -v mktemp >/dev/null 2>&1 ||
+        ! command -v sed >/dev/null 2>&1; then
+        log "Update check unavailable; continuing with version $SCRIPT_VERSION."
+        return 0
+    fi
+
+    revision="$(
+        curl --fail --location --silent --show-error --connect-timeout 5 --max-time 10 \
+            -H 'Cache-Control: no-cache' \
+            "https://api.github.com/repos/$FIX_REPO/commits/main" 2>/dev/null |
+            python3 -c 'import json,sys; print(json.load(sys.stdin).get("sha", ""))' 2>/dev/null
+    )" || revision=""
+    if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
+        log "Update check failed; continuing with version $SCRIPT_VERSION."
+        return 0
+    fi
+
+    update_file="$(mktemp)" || {
+        log "Update check failed; continuing with version $SCRIPT_VERSION."
+        return 0
+    }
+    if ! curl --fail --location --silent --show-error --connect-timeout 5 --max-time 10 \
+        "https://raw.githubusercontent.com/$FIX_REPO/$revision/install-pbz-fix.sh" \
+        --output "$update_file" 2>/dev/null || ! bash -n "$update_file" 2>/dev/null; then
+        rm -f -- "$update_file"
+        log "Update download failed; continuing with version $SCRIPT_VERSION."
+        return 0
+    fi
+
+    latest_version="$(sed -n 's/^SCRIPT_VERSION="\([0-9][0-9.]*\)"$/\1/p' "$update_file")" ||
+        latest_version=""
+    if [[ ! "$latest_version" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+        rm -f -- "$update_file"
+        log "Update version invalid; continuing with version $SCRIPT_VERSION."
+        return 0
+    fi
+    if [[ "$latest_version" == "$SCRIPT_VERSION" ]]; then
+        rm -f -- "$update_file"
+        return 0
+    fi
+
+    log "Running installer version $latest_version from the latest main commit."
+    exec 3< "$update_file"
+    rm -f -- "$update_file"
+    PBZ_FIX_REEXEC=1 exec bash -s -- "$@" <&3
+}
+
 main() {
+    if [[ ! -f "${BASH_SOURCE[0]:-}" ]]; then
+        refresh_piped_installer "$@"
+    fi
     check_requirements
 
     case "${1:-}" in

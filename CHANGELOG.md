@@ -64,6 +64,10 @@ Initial release.
 
 - Rename the Steam launch wrapper to `steam-launch.sh` and migrate previous wrapper launch options automatically.
 
+### Installer update — 2026-11-27 (v2.13)
+
+- Check for a newer installer when running from a pipe, with an opt-out and an offline fallback.
+
 ### Installer update — 2026-11-24
 
 - Fixed downloading the latest release when the GitHub CLI is installed and authenticated.
