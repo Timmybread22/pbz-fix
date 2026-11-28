@@ -14,6 +14,7 @@ from pathlib import Path
 
 APP_ID = "4115450"
 BACKUP_MANIFEST = "steam-launch-backup.json"
+WRAPPER_NAMES = ("steam-launch.sh", "steam-launch-beta.sh")
 
 
 def tokenize(text):
@@ -204,11 +205,11 @@ def is_previous_pbz_wrapper(option):
     except ValueError:
         return False
     if len(args) == 2 and args[1] == "%command%":
-        return Path(args[0]).name == "steam-launch-beta.sh"
+        return Path(args[0]).name in WRAPPER_NAMES
     if len(args) == 3 and args[2] == "%command%":
         return (
             Path(args[0]).name in ("bash", "sh")
-            and Path(args[1]).name == "steam-launch-beta.sh"
+            and Path(args[1]).name in WRAPPER_NAMES
         )
     return False
 
@@ -220,7 +221,7 @@ def setup_launch_options(steam_root, install_dir, prompt_replace):
     if not configs:
         raise ValueError("No Steam userdata localconfig.vdf files were found.")
 
-    wrapper_path = install_dir / "steam-launch-beta.sh"
+    wrapper_path = install_dir / "steam-launch.sh"
     quoted_path = (
         str(wrapper_path)
         .replace("\\", "\\\\")

@@ -125,7 +125,7 @@ def main():
             steam_root, install_dir, lambda _path: True
         )
         expected_option = (
-            f'bash "{install_dir.resolve()}/steam-launch-beta.sh" %command%'
+            f'bash "{install_dir.resolve()}/steam-launch.sh" %command%'
         )
         first_updated = first.read_text(encoding="utf-8")
         second_updated = second.read_text(encoding="utf-8")
@@ -166,12 +166,38 @@ def main():
         CONFIG.setup_launch_options(old_steam, root / "old-install", unexpected_prompt)
         old_updated = old_config.read_text(encoding="utf-8")
         assert CONFIG.app_settings(old_updated)[2][0]["value"] == (
-            f'bash "{(root / "old-install").resolve()}/steam-launch-beta.sh" %command%'
+            f'bash "{(root / "old-install").resolve()}/steam-launch.sh" %command%'
         )
         manifest = CONFIG.read_manifest(root / "old-install" / CONFIG.BACKUP_MANIFEST)
         assert Path(manifest["entries"][0]["backup_path"]).read_text(
             encoding="utf-8"
         ) == old_original
+        CONFIG.undo_launch_options(old_steam, root / "old-install")
+        assert old_config.read_text(encoding="utf-8") == old_original
+
+        legacy_steam = root / "legacy-steam"
+        legacy_install = root / "legacy-install"
+        legacy_config = legacy_steam / "userdata/600/config/localconfig.vdf"
+        legacy_backup = legacy_install / "backups" / "old" / "localconfig.vdf"
+        write_config(legacy_config, old_original)
+        write_config(legacy_backup, first_original)
+        CONFIG.write_manifest(
+            legacy_install / CONFIG.BACKUP_MANIFEST,
+            {"entries": [{
+                "config_path": str(legacy_config.resolve()),
+                "backup_path": str(legacy_backup.resolve()),
+            }]},
+        )
+        CONFIG.setup_launch_options(legacy_steam, legacy_install, unexpected_prompt)
+        assert CONFIG.app_settings(legacy_config.read_text(encoding="utf-8"))[2][0][
+            "value"
+        ] == f'bash "{legacy_install.resolve()}/steam-launch.sh" %command%'
+        assert legacy_backup.read_text(encoding="utf-8") == first_original
+        CONFIG.undo_launch_options(legacy_steam, legacy_install)
+        assert legacy_config.read_text(encoding="utf-8") == first_original
+
+        assert CONFIG.is_previous_pbz_wrapper('bash "/other path/steam-launch.sh" %command%')
+        assert CONFIG.is_previous_pbz_wrapper('~/other/steam-launch-beta.sh %command%')
         assert not CONFIG.is_previous_pbz_wrapper('echo steam-launch-beta.sh.bak')
         assert not CONFIG.is_previous_pbz_wrapper('echo steam-launch-beta.sh %command%')
         assert not CONFIG.is_previous_pbz_wrapper(
@@ -188,7 +214,7 @@ def main():
             updated = prompt_config.read_text(encoding="utf-8")
             if answer == "y":
                 assert CONFIG.app_settings(updated)[2][0]["value"] == (
-                    f'bash "{prompt_install.resolve()}/steam-launch-beta.sh" %command%'
+                    f'bash "{prompt_install.resolve()}/steam-launch.sh" %command%'
                 )
             else:
                 assert updated == first_original

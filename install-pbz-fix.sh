@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.11"
+SCRIPT_VERSION="2.12"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
@@ -876,7 +876,7 @@ setup_steam_launch() {
         fail "GitHub returned an invalid PBZ-Fix commit SHA."
 
     source_url="https://raw.githubusercontent.com/$FIX_REPO/$source_revision"
-    for script_name in install-pbz-fix.sh steam-launch-beta.sh steam-launch-config.py; do
+    for script_name in install-pbz-fix.sh steam-launch.sh steam-launch-config.py; do
         log "Downloading $script_name from commit $source_revision..."
         curl --fail --location --silent --show-error --retry 3 \
             "$source_url/$script_name" \
@@ -885,13 +885,13 @@ setup_steam_launch() {
     done
 
     bash -n "$staging_dir/install-pbz-fix.sh" &&
-        bash -n "$staging_dir/steam-launch-beta.sh" ||
+        bash -n "$staging_dir/steam-launch.sh" ||
         fail "Downloaded shell scripts failed syntax validation."
     python3 -m py_compile "$staging_dir/steam-launch-config.py" ||
         fail "Downloaded Steam launch configuration helper failed validation."
 
     mkdir -p "$install_dir"
-    for script_name in install-pbz-fix.sh steam-launch-beta.sh steam-launch-config.py; do
+    for script_name in install-pbz-fix.sh steam-launch.sh steam-launch-config.py; do
         cp -- "$staging_dir/$script_name" "$install_dir/$script_name.tmp"
         chmod 755 "$install_dir/$script_name.tmp"
         mv -f -- "$install_dir/$script_name.tmp" "$install_dir/$script_name"

@@ -60,6 +60,10 @@ Initial release.
 
 - Use the moving `main` URL for the README install command instead of a pinned installer revision.
 
+### Installer update — 2026-11-27 (v2.12)
+
+- Rename the Steam launch wrapper to `steam-launch.sh` and migrate previous wrapper launch options automatically.
+
 ### Installer update — 2026-11-24
 
 - Fixed downloading the latest release when the GitHub CLI is installed and authenticated.

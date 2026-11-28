@@ -109,8 +109,8 @@ curl() {
         */install-pbz-fix.sh)
             cp "$REPO_ROOT/install-pbz-fix.sh" "$output"
             ;;
-        */steam-launch-beta.sh)
-            cp "$REPO_ROOT/steam-launch-beta.sh" "$output"
+        */steam-launch.sh)
+            cp "$REPO_ROOT/steam-launch.sh" "$output"
             ;;
         */steam-launch-config.py)
             cp "$REPO_ROOT/steam-launch-config.py" "$output"
@@ -166,13 +166,16 @@ rm -f -- "$TEST_STEAM_RUNNING"
 EOF
 chmod +x "$TEST_ROOT/bin/steam"
 
+mkdir -p "$INSTALL_DIR"
+printf 'previous wrapper\n' > "$INSTALL_DIR/steam-launch-beta.sh"
 setup_steam_launch
 
 [[ "${SHUTDOWN_CONFIRMED:-0}" == 1 ]]
 [[ ! -e "$TEST_STEAM_RUNNING" ]]
 [[ -f "$GAME_DIR/platform/steam/PBZ.exe" ]]
 [[ "$(cat "$GAME_DIR/.pbz-fix-install-revision")" == "$INSTALL_REVISION" ]]
-[[ -x "$INSTALL_DIR/steam-launch-beta.sh" ]]
+[[ -x "$INSTALL_DIR/steam-launch.sh" ]]
+[[ "$(cat "$INSTALL_DIR/steam-launch-beta.sh")" == "previous wrapper" ]]
 
 python3 - "$REPO_ROOT/steam-launch-config.py" "$CONFIG" "$INSTALL_DIR" <<'PY'
 import importlib.util
@@ -184,13 +187,13 @@ config = importlib.util.module_from_spec(module_spec)
 module_spec.loader.exec_module(config)
 text = Path(sys.argv[2]).read_text(encoding="utf-8")
 options = config.app_settings(text)[2]
-expected = f'bash "{Path(sys.argv[3]).resolve()}/steam-launch-beta.sh" %command%'
+expected = f'bash "{Path(sys.argv[3]).resolve()}/steam-launch.sh" %command%'
 assert len(options) == 1
 assert options[0]["value"] == expected
 PY
 
 export CAPTURE_ARGS="$TEST_ROOT/captured-args"
-bash "$INSTALL_DIR/steam-launch-beta.sh" \
+bash "$INSTALL_DIR/steam-launch.sh" \
     "$GAME_DIR/steam/PBZ.exe" \
     "argument with spaces" \
     "--custom=two words"
