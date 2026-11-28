@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.5"
+SCRIPT_VERSION="2.7"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
@@ -100,34 +100,52 @@ manifest_install_dir() {
     ' "$manifest"
 }
 
+steam_library_roots() {
+    local library_folders="$STEAM_ROOT/steamapps/libraryfolders.vdf"
+
+    printf '%s\n' "$STEAM_ROOT"
+    [[ -r "$library_folders" ]] || return 0
+
+    awk -F '"' '
+        tolower($2) == "path" && $4 ~ /^\// {
+            print $4
+        }
+    ' "$library_folders"
+}
+
 find_game_directory() {
     local library
     local manifest
     local manifest_dir
     local install_dir
     local game_candidate
+    local -a libraries=()
     local -a manifests=()
 
-    for library in "${STEAM_LIBRARIES[@]}"; do
-        game_candidate="$library/steamapps/common/PBZ"
-        if [[ -d "$game_candidate" ]]; then
-            GAME_DIR="$game_candidate"
-            GAME_LIBRARY="$library"
-            log "Found game directory: $GAME_DIR"
-            return 0
-        fi
+    while IFS= read -r library; do
+        [[ "$library" == /* && -d "$library/steamapps" ]] || continue
+        libraries+=("$library")
+    done < <(steam_library_roots)
 
-        manifest="$library/steamapps/appmanifest_${APP_ID}.acf"
-        if [[ -f "$manifest" ]]; then
+    for library in "${libraries[@]}"; do
+        while IFS= read -r -d '' manifest; do
             manifests+=("$manifest")
-        fi
+        done < <(
+            find "$library/steamapps" \
+                -type f \
+                -name "appmanifest_${APP_ID}.acf" \
+                -print0 2>/dev/null
+        )
     done
 
     for manifest in "${manifests[@]}"; do
         manifest_dir="$(dirname "$manifest")"
         install_dir="$(manifest_install_dir "$manifest")"
 
-        if [[ -n "$install_dir" ]]; then
+        if [[ -n "$install_dir" &&
+              "$install_dir" != "." &&
+              "$install_dir" != ".." &&
+              "$install_dir" != */* ]]; then
             game_candidate="$manifest_dir/common/$install_dir"
             if [[ -d "$game_candidate" ]]; then
                 GAME_DIR="$game_candidate"
@@ -135,6 +153,20 @@ find_game_directory() {
                 log "Found game directory through app manifest: $GAME_DIR"
                 return 0
             fi
+        fi
+    done
+
+    if ((${#manifests[@]} > 0)); then
+        return 1
+    fi
+
+    for library in "${libraries[@]}"; do
+        game_candidate="$library/steamapps/common/PBZ"
+        if [[ -d "$game_candidate" ]]; then
+            GAME_DIR="$game_candidate"
+            GAME_LIBRARY="$library"
+            log "Found game directory without an app manifest: $GAME_DIR"
+            return 0
         fi
     done
 
@@ -540,14 +572,12 @@ create_backups() {
     local extract_dir="$1"
     local timestamp
     local backup_dir
-    local prior_backup
     local original_backup
     local backup_pointer="$GAME_DIR/.pbz-fix-original-backup"
     local backup_pointer_temp="$backup_pointer.tmp.$$"
     local source
     local destination
 
-    prior_backup="$(latest_backup)"
     timestamp="$(date '+%Y%m%d-%H%M%S')"
     backup_dir="$HOME/pbz-backup-$timestamp"
     if ! mkdir -- "$backup_dir" 2>/dev/null; then
@@ -573,20 +603,10 @@ create_backups() {
     original_backup="$backup_dir"
     if [[ -r "$backup_pointer" ]]; then
         IFS= read -r original_backup < "$backup_pointer" || original_backup=""
-    elif [[ -n "$prior_backup" && -d "$prior_backup" ]]; then
-        original_backup="$prior_backup"
     fi
 
-    case "$original_backup" in
-        "$HOME"/pbz-backup-*)
-            if [[ ! -d "$original_backup" ]]; then
-                original_backup="$backup_dir"
-            fi
-            ;;
-        *)
-            original_backup="$backup_dir"
-            ;;
-    esac
+    backup_directory_is_valid "$original_backup" ||
+        original_backup="$backup_dir"
 
     printf '%s\n' "$original_backup" > "$backup_pointer_temp"
     mv -- "$backup_pointer_temp" "$backup_pointer"
@@ -716,9 +736,7 @@ launch_detected_game() {
     return "$launch_status"
 }
 
-install_fix() {
-    prepare_game
-
+install_or_repair_fix() {
     if fix_is_installed; then
         log "Fix is already installed and verified; skipping download and installation."
     else
@@ -738,6 +756,11 @@ install_fix() {
         write_install_manifest "$TEMP_DIR/extracted"
         log "Post-install verification passed."
     fi
+}
+
+install_fix() {
+    prepare_runtime
+    install_or_repair_fix
 
     prepare_save_link
     cleanup
@@ -745,6 +768,109 @@ install_fix() {
 
 force_install_fix() {
     FORCE_INSTALL=1 install_fix
+}
+
+steam_is_running() {
+    local user_id
+    local process_name
+
+    user_id="$(id -u)"
+    for process_name in steam steamwebhelper; do
+        if pgrep -u "$user_id" -x "$process_name" >/dev/null 2>&1; then
+            return 0
+        fi
+    done
+    pgrep -u "$user_id" -f "$STEAM_ROOT/steam.sh" >/dev/null 2>&1
+}
+
+require_steam_closed() {
+    local answer
+
+    [[ -r /dev/tty ]] ||
+        fail "Steam launch setup requires an interactive terminal."
+
+    printf '%s\n' \
+        "Close Steam completely before changing its launch options."
+    IFS= read -r -p "Press Enter once Steam is closed, or Ctrl+C to cancel: " \
+        answer </dev/tty ||
+        fail "Could not read confirmation from the terminal."
+
+    if steam_is_running; then
+        fail "Steam is still running. Close it completely, then retry."
+    fi
+}
+
+setup_steam_launch() {
+    local install_dir="$HOME/.local/share/pbz-fix"
+    local source_ref="${PBZ_FIX_SETUP_REF:-main}"
+    local source_revision
+    local source_url
+    local script_name
+    local staging_dir
+
+    require_command curl
+    require_command python3
+    require_command pgrep
+    if ! detect_steam; then
+        fail "Steam could not be found."
+    fi
+    require_steam_closed
+
+    TEMP_DIR="$(mktemp -d)"
+    staging_dir="$TEMP_DIR/pbz-fix"
+    mkdir -p "$staging_dir"
+
+    log "Resolving a pinned PBZ-Fix source revision..."
+    source_revision="$(
+        curl --fail --location --silent --show-error --retry 3 \
+            "https://api.github.com/repos/$FIX_REPO/commits/$source_ref" |
+            python3 -c 'import json,sys; print(json.load(sys.stdin).get("sha", ""))'
+    )" || fail "Could not resolve the PBZ-Fix source revision."
+    [[ "$source_revision" =~ ^[0-9a-f]{40}$ ]] ||
+        fail "GitHub returned an invalid PBZ-Fix commit SHA."
+
+    source_url="https://raw.githubusercontent.com/$FIX_REPO/$source_revision"
+    for script_name in install-pbz-fix.sh steam-launch-beta.sh steam-launch-config.py; do
+        log "Downloading $script_name from commit $source_revision..."
+        curl --fail --location --silent --show-error --retry 3 \
+            "$source_url/$script_name" \
+            --output "$staging_dir/$script_name" ||
+            fail "Could not download $script_name."
+    done
+
+    bash -n "$staging_dir/install-pbz-fix.sh" &&
+        bash -n "$staging_dir/steam-launch-beta.sh" ||
+        fail "Downloaded shell scripts failed syntax validation."
+    python3 -m py_compile "$staging_dir/steam-launch-config.py" ||
+        fail "Downloaded Steam launch configuration helper failed validation."
+
+    mkdir -p "$install_dir"
+    for script_name in install-pbz-fix.sh steam-launch-beta.sh steam-launch-config.py; do
+        cp -- "$staging_dir/$script_name" "$install_dir/$script_name.tmp"
+        chmod 755 "$install_dir/$script_name.tmp"
+        mv -f -- "$install_dir/$script_name.tmp" "$install_dir/$script_name"
+    done
+
+    python3 "$install_dir/steam-launch-config.py" setup \
+        --steam-root "$STEAM_ROOT" \
+        --install-dir "$install_dir"
+}
+
+undo_steam_launch() {
+    local install_dir="$HOME/.local/share/pbz-fix"
+
+    require_command python3
+    require_command pgrep
+    if ! detect_steam; then
+        fail "Steam could not be found."
+    fi
+    require_steam_closed
+    [[ -f "$install_dir/steam-launch-config.py" ]] ||
+        fail "Steam launch setup files were not found in $install_dir."
+
+    python3 "$install_dir/steam-launch-config.py" undo \
+        --steam-root "$STEAM_ROOT" \
+        --install-dir "$install_dir"
 }
 
 launch_game() {
@@ -778,6 +904,14 @@ latest_backup() {
     fi
 }
 
+backup_directory_is_valid() {
+    local backup_dir="$1"
+
+    [[ -d "$backup_dir" &&
+       "$(dirname "$backup_dir")" == "$HOME" &&
+       "$(basename "$backup_dir")" == pbz-backup-* ]]
+}
+
 confirm_action() {
     local prompt="$1"
     local answer
@@ -805,22 +939,11 @@ uninstall_fix() {
     backup_pointer="$GAME_DIR/.pbz-fix-original-backup"
     if [[ -r "$backup_pointer" ]]; then
         IFS= read -r backup_dir < "$backup_pointer" || backup_dir=""
-        case "$backup_dir" in
-            "$HOME"/pbz-backup-*)
-                [[ -d "$backup_dir" ]] || backup_dir=""
-                ;;
-            *)
-                backup_dir=""
-                ;;
-        esac
-    fi
-
-    if [[ -z "$backup_dir" ]]; then
-        backup_dir="$(latest_backup)"
+        backup_directory_is_valid "$backup_dir" || backup_dir=""
     fi
 
     [[ -n "$backup_dir" ]] ||
-        fail "No PBZ backup directory was found under $HOME."
+        fail "No restore point is linked to this game directory. Refusing to select an unrelated backup."
 
     log "Selected backup: $backup_dir"
     if ! confirm_action "Restore this backup and remove the fix files?"; then
@@ -983,6 +1106,20 @@ BANNER
     printf 'Version %s\n\n' "$SCRIPT_VERSION"
 }
 
+check_requirements() {
+    require_command unzip
+    require_command find
+    require_command cp
+    require_command mkdir
+    require_command sed
+    require_command awk
+    require_command grep
+    require_command mktemp
+    require_command date
+    require_command sha256sum
+    require_command sort
+}
+
 run_action() {
     local action_name="$1"
 
@@ -1011,6 +1148,8 @@ show_menu() {
             "6) Create diagnostic log on Desktop" \
             "7) Show installation status" \
             "8) Undo save-folder link" \
+            "9) Set up Steam launch wrapper" \
+            "10) Undo Steam launch wrapper" \
             "0) Exit"
 
         if ! IFS= read -r -p $'\nSelect an option: ' choice </dev/tty; then
@@ -1038,6 +1177,8 @@ show_menu() {
             6) run_action "Diagnostic report" write_diagnostics || log "Diagnostic report failed." ;;
             7) run_action "Status report" show_status || log "Status report failed." ;;
             8) run_action "Undo save-folder link" undo_save_link || log "Save-link undo failed." ;;
+            9) run_action "Set up Steam launch wrapper" setup_steam_launch || log "Steam launch setup failed." ;;
+            10) run_action "Undo Steam launch wrapper" undo_steam_launch || log "Steam launch undo failed." ;;
             0) log "Goodbye."; return 0 ;;
             *) log "Choose one of the listed options." ;;
         esac
@@ -1047,17 +1188,7 @@ show_menu() {
 }
 
 main() {
-    require_command unzip
-    require_command find
-    require_command cp
-    require_command mkdir
-    require_command sed
-    require_command awk
-    require_command grep
-    require_command mktemp
-    require_command date
-    require_command sha256sum
-    require_command sort
+    check_requirements
 
     case "${1:-}" in
         --install) run_action "Install/update" install_fix ;;
@@ -1069,8 +1200,10 @@ main() {
         --diagnostics) run_action "Diagnostic report" write_diagnostics ;;
         --status) run_action "Status report" show_status ;;
         --undo-save-link) run_action "Undo save-folder link" undo_save_link ;;
+        --setup-steam-launch) run_action "Set up Steam launch wrapper" setup_steam_launch ;;
+        --undo-steam-launch) run_action "Undo Steam launch wrapper" undo_steam_launch ;;
         --help|-h)
-            printf 'Usage: %s [--install|--fix-save-link|--force-install|--launch|--launch-log|--uninstall|--undo-save-link|--diagnostics|--status]\n' "$0"
+            printf 'Usage: %s [--install|--fix-save-link|--force-install|--launch|--launch-log|--uninstall|--undo-save-link|--setup-steam-launch|--undo-steam-launch|--diagnostics|--status]\n' "$0"
             printf 'With no option, show the interactive menu (or install when no terminal is available).\n'
             ;;
         "")
@@ -1087,4 +1220,6 @@ main() {
     esac
 }
 
-main "$@"
+if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
