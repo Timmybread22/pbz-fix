@@ -74,10 +74,6 @@ PY
 source "$REPO_ROOT/install-pbz-fix.sh"
 STEAM_ROOT="$HOME/.local/share/Steam"
 
-confirm_steam_shutdown() {
-    SHUTDOWN_CONFIRMED=1
-}
-
 steam_is_running() {
     [[ -e "$TEST_STEAM_RUNNING" ]]
 }
@@ -170,7 +166,6 @@ mkdir -p "$INSTALL_DIR"
 printf 'previous wrapper\n' > "$INSTALL_DIR/steam-launch-beta.sh"
 setup_steam_launch
 
-[[ "${SHUTDOWN_CONFIRMED:-0}" == 1 ]]
 [[ ! -e "$TEST_STEAM_RUNNING" ]]
 [[ -f "$GAME_DIR/platform/steam/PBZ.exe" ]]
 [[ "$(cat "$GAME_DIR/.pbz-fix-install-revision")" == "$INSTALL_REVISION" ]]

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.14"
+SCRIPT_VERSION="2.15"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
@@ -785,22 +785,6 @@ steam_is_running() {
     pgrep -u "$user_id" -f "$STEAM_ROOT/steam.sh" >/dev/null 2>&1
 }
 
-confirm_steam_shutdown() {
-    local answer
-
-    [[ -r /dev/tty ]] ||
-        fail "Steam shutdown requires an interactive terminal."
-
-    printf '%s\n' \
-        "PBZ-Fix needs Steam closed before changing game files or Steam settings."
-    IFS= read -r -p "Save and close any running game. Shut down Steam now? [y/N] " \
-        answer </dev/tty ||
-        fail "Could not read confirmation from the terminal."
-
-    [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]] ||
-        fail "Steam shutdown cancelled."
-}
-
 close_steam() {
     local steam_command
     local path_command
@@ -811,8 +795,6 @@ close_steam() {
         log "Steam is already closed."
         return 0
     fi
-
-    confirm_steam_shutdown
 
     require_command sleep
     path_command="$(type -P steam || true)"
@@ -944,7 +926,6 @@ try:
     texts = [(path, path.read_text(encoding="utf-8")) for path in configs]
     relevant = [(path, text) for path, text in texts if any(name in text for name in names)]
     if not relevant:
-        print("No Steam launch wrapper found.")
         sys.exit(0)
     if not helper_path.is_file():
         raise ValueError("Steam launch helper is missing. Remove the PBZ wrapper manually, then retry.")
@@ -973,7 +954,8 @@ try:
         plans.append((path, updated))
     for path, updated in plans:
         helper.atomic_write(path, updated.encode("utf-8"), path.stat().st_mode)
-    print(f"Removed the Steam launch wrapper for {len(plans)} account(s).")
+    if plans:
+        print(f"Removed the Steam launch wrapper for {len(plans)} account(s).")
 except (OSError, ValueError, ImportError) as error:
     print(f"Steam launch cleanup failed: {error}", file=sys.stderr)
     sys.exit(1)
@@ -1022,17 +1004,6 @@ backup_directory_is_valid() {
        "$(basename "$backup_dir")" == pbz-backup-* ]]
 }
 
-confirm_action() {
-    local prompt="$1"
-    local answer
-
-    [[ -r /dev/tty ]] ||
-        fail "This action requires an interactive terminal."
-
-    IFS= read -r -p "$prompt [y/N] " answer </dev/tty || return 1
-    [[ "${answer,,}" == "y" || "${answer,,}" == "yes" ]]
-}
-
 uninstall_fix() {
     local backup_dir=""
     local backup_pointer
@@ -1056,11 +1027,7 @@ uninstall_fix() {
         fail "No restore point is linked to this game directory. Refusing to select an unrelated backup."
 
     log "Selected backup: $backup_dir"
-    if ! confirm_action "Restore game files and backed-up Steam configuration, and remove the PBZ launch wrapper?"; then
-        log "Uninstall cancelled."
-        return 0
-    fi
-
+    log "Uninstalling the fix and restoring Steam launch configuration."
     require_command pgrep
     require_command python3
     close_steam

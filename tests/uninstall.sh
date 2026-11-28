@@ -22,18 +22,6 @@ chmod +x "$TEST_ROOT/bin/steam"
 # shellcheck source=../install-pbz-fix.sh
 source "$REPO_ROOT/install-pbz-fix.sh"
 
-confirm_action() {
-    [[ "$1" == *"Steam configuration"* && "$1" == *"remove the PBZ launch wrapper"* ]]
-    printf 'confirm-uninstall\n' >> "$TEST_EVENTS"
-    [[ "$UNINSTALL_DECISION" == "yes" ]]
-}
-
-confirm_steam_shutdown() {
-    printf 'confirm-shutdown\n' >> "$TEST_EVENTS"
-    [[ "${SHUTDOWN_DECISION:-yes}" == "yes" ]] ||
-        fail "Steam shutdown cancelled."
-}
-
 steam_is_running() {
     [[ -e "$TEST_STEAM_RUNNING" ]]
 }
@@ -101,35 +89,14 @@ assert '"Other" "keep"' in text
 PY
 }
 
-make_fixture cancel
-UNINSTALL_DECISION=no
-main --uninstall
-[[ -e "$TEST_STEAM_RUNNING" ]]
-[[ "$(cat "$TEST_EVENTS")" == "confirm-uninstall" ]]
-[[ "$(cat "$GAME_DIR/steam/existing.dll")" == "patched" ]]
-
-make_fixture shutdown-declined
-UNINSTALL_DECISION=yes
-SHUTDOWN_DECISION=no
-if output="$(main --uninstall 2>&1)"; then
-    printf 'Declined Steam shutdown should stop uninstall.\n' >&2
-    exit 1
-fi
-[[ "$output" == *"Steam shutdown cancelled."* ]]
-[[ -e "$TEST_STEAM_RUNNING" ]]
-[[ "$(cat "$TEST_EVENTS")" == $'confirm-uninstall\nconfirm-shutdown' ]]
-[[ "$(cat "$GAME_DIR/steam/existing.dll")" == "patched" ]]
-SHUTDOWN_DECISION=yes
-
 make_fixture with-backup
 write_wrapper_config
 python3 "$HOME/.local/share/pbz-fix/steam-launch-config.py" setup \
     --steam-root "$HOME/.local/share/Steam" \
     --install-dir "$HOME/.local/share/pbz-fix"
-UNINSTALL_DECISION=yes
 main --uninstall
 [[ ! -e "$TEST_STEAM_RUNNING" ]]
-[[ "$(cat "$TEST_EVENTS")" == $'confirm-uninstall\nconfirm-shutdown\nshutdown' ]]
+[[ "$(cat "$TEST_EVENTS")" == "shutdown" ]]
 [[ "$(cat "$GAME_DIR/steam/existing.dll")" == "original" ]]
 [[ ! -e "$GAME_DIR/platform/steam/PBZ.exe" ]]
 [[ ! -e "$HOME/.local/share/pbz-fix/steam-launch-backup.json" ]]
@@ -149,7 +116,7 @@ import sys
 spec = importlib.util.spec_from_file_location("config", sys.argv[1])
 config = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(config)
-config.setup_launch_options(sys.argv[2], sys.argv[3], lambda _: True)
+config.setup_launch_options(sys.argv[2], sys.argv[3])
 PY
 main --uninstall
 grep -q 'MANGOHUD=1 %command%' "$config"

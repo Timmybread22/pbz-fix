@@ -72,6 +72,10 @@ Initial release.
 
 - Confirm uninstall before closing Steam, restoring backed-up Steam configuration, removing the launch wrapper, and restoring game files.
 
+### Installer update — 2026-11-27 (v2.15)
+
+- Run Steam shutdown, uninstall, and launch-option replacement without confirmation prompts; retain backups and safety checks.
+
 ### Installer update — 2026-11-24
 
 - Fixed downloading the latest release when the GitHub CLI is installed and authenticated.

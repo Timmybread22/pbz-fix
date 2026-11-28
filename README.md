@@ -16,11 +16,11 @@ When piped into Bash, the installer checks its version against `main` and runs t
 
 ### Menu options
 
-1. **Install/repair, check saves, and set up Steam launch** — Requests permission to close Steam, applies or verifies the fix, checks for misplaced saves, and configures the launch wrapper in one run. Run it again after your first save; it does not start the game.
+1. **Install/repair, check saves, and set up Steam launch** — Closes Steam, applies or verifies the fix, checks for misplaced saves, and configures the launch wrapper in one run. Run it again after your first save; it does not start the game.
 2. **Force reinstall/update** — Downloads and installs the fix again, then checks for misplaced saves.
 3. **Launch** — Starts the game without reinstalling.
 4. **Launch with Proton logging** — Starts the game and asks Proton to write a debug log.
-5. **Uninstall/restore** — With confirmation, closes Steam, restores backed-up Steam configuration, removes the PBZ launch wrapper, and restores original game files.
+5. **Uninstall/restore** — Closes Steam, restores backed-up Steam configuration, removes the PBZ launch wrapper, and restores original game files.
 6. **Diagnostic log** — Saves a system and install report to your Desktop.
 7. **Status** — Shows Steam, game, GE-Proton, and fix status.
 8. **Undo save-folder link** — Restores the save-folder layout from before the link was made.
@@ -38,13 +38,13 @@ Run this one-line command from a terminal to set up Steam's launch option:
 curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/main/install-pbz-fix.sh | bash -s -- --setup-steam-launch
 ```
 
-The installer asks permission to shut Steam down cleanly, then applies or verifies the fix and configures the launch option in the same run. If Steam cannot be shut down, close it completely by hand and retry. It downloads `install-pbz-fix.sh`, `steam-launch.sh`, and the config helper into `~/.local/share/pbz-fix/`, all from the same resolved commit. It backs up each affected `localconfig.vdf` before setting this launch option:
+The installer shuts Steam down cleanly, then applies or verifies the fix and configures the launch option in the same run. Save and close any running game before starting. If Steam cannot be shut down, close it completely by hand and retry. It downloads `install-pbz-fix.sh`, `steam-launch.sh`, and the config helper into `~/.local/share/pbz-fix/`, all from the same resolved commit. It backs up each affected `localconfig.vdf` before setting this launch option:
 
 ```text
 bash "/home/deck/.local/share/pbz-fix/steam-launch.sh" %command%
 ```
 
-The wrapper verifies or installs the fix, redirects Steam's `steam/PBZ.exe` executable argument to `platform/steam/PBZ.exe`, and hands Steam its original command and arguments. Steam continues using its selected compatibility tool. Arguments and paths containing spaces are preserved. Setup automatically replaces a standard previous PBZ wrapper and asks before replacing other launch options. To undo the setup, close Steam and run:
+The wrapper verifies or installs the fix, redirects Steam's `steam/PBZ.exe` executable argument to `platform/steam/PBZ.exe`, and hands Steam its original command and arguments. Steam continues using its selected compatibility tool. Arguments and paths containing spaces are preserved. Setup replaces existing launch options automatically and backs up each config before changing it; undo restores the original backup. To undo the setup, run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Timmybread22/pbz-fix/main/install-pbz-fix.sh | bash -s -- --undo-steam-launch

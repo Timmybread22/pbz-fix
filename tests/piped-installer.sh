@@ -39,10 +39,10 @@ esac
 EOF
 chmod +x "$TEST_ROOT/bin/curl"
 
-sed 's/^SCRIPT_VERSION="2.14"$/SCRIPT_VERSION="2.15"/' \
+sed 's/^SCRIPT_VERSION="2.15"$/SCRIPT_VERSION="2.16"/' \
     "$SCRIPT_DIR/install-pbz-fix.sh" > "$FAKE_REMOTE"
 output="$(cat "$SCRIPT_DIR/install-pbz-fix.sh" | bash -s -- --help)"
-grep -q 'Running installer version 2.15' <<<"$output"
+grep -q 'Running installer version 2.16' <<<"$output"
 grep -q '^Usage:' <<<"$output"
 [[ "$(wc -l < "$FAKE_CALLS")" -eq 2 ]]
 
@@ -65,24 +65,24 @@ for FAKE_MODE in api-fail download-fail; do
     export FAKE_MODE
     : > "$FAKE_CALLS"
     output="$(cat "$SCRIPT_DIR/install-pbz-fix.sh" | bash -s -- --help)"
-    grep -q 'continuing with version 2.14' <<<"$output"
+    grep -q 'continuing with version 2.15' <<<"$output"
     grep -q '^Usage:' <<<"$output"
 done
 export FAKE_MODE="success"
 
-printf 'SCRIPT_VERSION="2.15"\nif\n' > "$FAKE_REMOTE"
+printf 'SCRIPT_VERSION="2.16"\nif\n' > "$FAKE_REMOTE"
 output="$(cat "$SCRIPT_DIR/install-pbz-fix.sh" | bash -s -- --help)"
-grep -q 'Update download failed; continuing with version 2.14' <<<"$output"
+grep -q 'Update download failed; continuing with version 2.15' <<<"$output"
 grep -q '^Usage:' <<<"$output"
 
 printf 'SCRIPT_VERSION="invalid"\n' > "$FAKE_REMOTE"
 output="$(cat "$SCRIPT_DIR/install-pbz-fix.sh" | bash -s -- --help)"
-grep -q 'Update version invalid; continuing with version 2.14' <<<"$output"
+grep -q 'Update version invalid; continuing with version 2.15' <<<"$output"
 grep -q '^Usage:' <<<"$output"
 
 cat > "$FAKE_REMOTE" <<'EOF'
 #!/usr/bin/env bash
-SCRIPT_VERSION="2.15"
+SCRIPT_VERSION="2.16"
 printf 'Refresh terminal prompt: '
 IFS= read -r answer </dev/tty
 printf 'TTY=%s ARG=%s GUARD=%s\n' "$answer" "$1" "${PBZ_FIX_REEXEC:-}"

@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 import argparse
-import errno
 import json
 import os
 import re
-import shlex
 import shutil
 import sys
 import tempfile
-from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
 
 APP_ID = "4115450"
 BACKUP_MANIFEST = "steam-launch-backup.json"
-WRAPPER_NAMES = ("steam-launch.sh", "steam-launch-beta.sh")
 
 
 def tokenize(text):
@@ -199,22 +195,7 @@ def write_manifest(path, manifest):
     atomic_write(path, data, 0o600)
 
 
-def is_previous_pbz_wrapper(option):
-    try:
-        args = shlex.split(option)
-    except ValueError:
-        return False
-    if len(args) == 2 and args[1] == "%command%":
-        return Path(args[0]).name in WRAPPER_NAMES
-    if len(args) == 3 and args[2] == "%command%":
-        return (
-            Path(args[0]).name in ("bash", "sh")
-            and Path(args[1]).name in WRAPPER_NAMES
-        )
-    return False
-
-
-def setup_launch_options(steam_root, install_dir, prompt_replace):
+def setup_launch_options(steam_root, install_dir):
     steam_root = Path(steam_root).resolve()
     install_dir = Path(install_dir).resolve()
     configs = config_files(steam_root)
@@ -238,15 +219,8 @@ def setup_launch_options(steam_root, install_dir, prompt_replace):
         current = options[0]["value"] if options else None
         if current == launch_option:
             continue
-        if (
-            current is not None
-            and not is_previous_pbz_wrapper(current)
-            and not prompt_replace(path)
-        ):
-            print(f"Skipped existing launch options for Steam user {path.parts[-3]}.")
-            continue
         updated = set_app_option(text, apps, app, options, launch_option)
-        plans.append((path, text, updated))
+        plans.append((path, text, updated, current is not None))
 
     if not plans:
         print("No Steam launch options needed changes.")
@@ -257,9 +231,7 @@ def setup_launch_options(steam_root, install_dir, prompt_replace):
     manifest = read_manifest(manifest_path)
     tracked = {entry["config_path"] for entry in manifest["entries"]}
     new_backups = []
-    untracked_plans = [plan for plan in plans if str(plan[0]) not in tracked]
-
-    if untracked_plans:
+    if plans:
         backups_root = install_dir / "backups"
         backups_root.mkdir(parents=True, exist_ok=True)
         backup_dir = Path(
@@ -268,23 +240,25 @@ def setup_launch_options(steam_root, install_dir, prompt_replace):
                 dir=backups_root,
             )
         )
-        for index, (path, _, _) in enumerate(untracked_plans):
+        for index, (path, _, _, _) in enumerate(plans):
             backup_path = backup_dir / f"localconfig-{path.parts[-3]}-{index}.vdf"
             shutil.copy2(path, backup_path)
-            new_backups.append(
-                {"config_path": str(path), "backup_path": str(backup_path)}
-            )
+            if str(path) not in tracked:
+                new_backups.append(
+                    {"config_path": str(path), "backup_path": str(backup_path)}
+                )
 
     if new_backups:
         manifest["entries"].extend(new_backups)
         write_manifest(manifest_path, manifest)
 
-    for path, _, updated in plans:
+    for path, _, updated, replaced in plans:
         atomic_write(path, updated.encode("utf-8"), path.stat().st_mode)
+        if replaced:
+            print(f"Replaced existing launch options for Steam user {path.parts[-3]}.")
 
     print(f"Steam launch options configured for {len(plans)} account(s).")
-    if new_backups:
-        print(f"Original Steam config backed up under {backup_dir}.")
+    print(f"Steam configs backed up under {backup_dir}.")
 
 
 def undo_launch_options(steam_root, install_dir):
@@ -320,31 +294,6 @@ def undo_launch_options(steam_root, install_dir):
     print("Steam launch wrapper files remain installed and can be removed manually.")
 
 
-def ask_replace(path):
-    with ExitStack() as stack:
-        try:
-            terminal_in = stack.enter_context(open("/dev/tty", "r", encoding="utf-8"))
-            terminal_out = stack.enter_context(open("/dev/tty", "w", encoding="utf-8"))
-        except OSError as error:
-            if error.errno in (errno.ENXIO, errno.ENODEV, errno.ENOENT):
-                raise ValueError(
-                    "Replacing existing Steam launch options requires a controlling terminal."
-                ) from error
-            raise ValueError(f"Could not open the terminal: {error}") from error
-        try:
-            terminal_out.write(
-                f"Launch options already exist for Steam user {path.parts[-3]}. "
-                "Replace them? [y/N] "
-            )
-            terminal_out.flush()
-            answer = terminal_in.readline()
-        except OSError as error:
-            raise ValueError(f"Could not read or write the terminal: {error}") from error
-        if not answer:
-            raise ValueError("Could not read confirmation from the terminal.")
-        return answer.strip().lower() in ("y", "yes")
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("setup", "undo"))
@@ -353,7 +302,7 @@ def main():
     args = parser.parse_args()
     try:
         if args.action == "setup":
-            setup_launch_options(args.steam_root, args.install_dir, ask_replace)
+            setup_launch_options(args.steam_root, args.install_dir)
         else:
             undo_launch_options(args.steam_root, args.install_dir)
     except (OSError, ValueError) as error:
