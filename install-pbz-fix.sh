@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Phantom Blade Zero fix installer
-SCRIPT_VERSION="2.7"
+SCRIPT_VERSION="2.8"
 APP_ID="4115450"
 FIX_REPO="${FIX_REPO:-Timmybread22/pbz-fix}"
 FIX_RELEASE="${FIX_RELEASE:-latest}"
@@ -492,7 +492,9 @@ download_fix() {
         return 0
     fi
 
-    TEMP_DIR="$(mktemp -d)"
+    if [[ -z "$TEMP_DIR" ]]; then
+        TEMP_DIR="$(mktemp -d)"
+    fi
 
     if command -v gh >/dev/null 2>&1; then
         if gh auth status >/dev/null 2>&1; then
@@ -783,21 +785,55 @@ steam_is_running() {
     pgrep -u "$user_id" -f "$STEAM_ROOT/steam.sh" >/dev/null 2>&1
 }
 
-require_steam_closed() {
+confirm_steam_shutdown() {
     local answer
 
     [[ -r /dev/tty ]] ||
-        fail "Steam launch setup requires an interactive terminal."
+        fail "Steam shutdown requires an interactive terminal."
 
     printf '%s\n' \
-        "Close Steam completely before changing its launch options."
-    IFS= read -r -p "Press Enter once Steam is closed, or Ctrl+C to cancel: " \
+        "PBZ-Fix needs Steam closed to apply the fix and change launch options."
+    IFS= read -r -p "Save and close any running game. Shut down Steam now? [y/N] " \
         answer </dev/tty ||
         fail "Could not read confirmation from the terminal."
 
-    if steam_is_running; then
-        fail "Steam is still running. Close it completely, then retry."
+    [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]] ||
+        fail "Steam shutdown cancelled."
+}
+
+close_steam() {
+    local steam_command
+    local attempt
+
+    if ! steam_is_running; then
+        log "Steam is already closed."
+        return 0
     fi
+
+    confirm_steam_shutdown
+
+    if [[ -x "$STEAM_ROOT/steam" ]]; then
+        steam_command="$STEAM_ROOT/steam"
+    else
+        steam_command="$(command -v steam || true)"
+    fi
+    [[ -n "$steam_command" ]] ||
+        fail "Could not find Steam's command to request a clean shutdown."
+
+    require_command sleep
+    log "Requesting a clean Steam shutdown..."
+    "$steam_command" -shutdown ||
+        fail "Steam did not accept the shutdown request."
+
+    for ((attempt = 0; attempt < 30; attempt++)); do
+        if ! steam_is_running; then
+            log "Steam has closed."
+            return 0
+        fi
+        sleep 1
+    done
+
+    fail "Steam is still running. Close it completely, then retry."
 }
 
 setup_steam_launch() {
@@ -814,7 +850,8 @@ setup_steam_launch() {
     if ! detect_steam; then
         fail "Steam could not be found."
     fi
-    require_steam_closed
+    close_steam
+    prepare_game
 
     TEMP_DIR="$(mktemp -d)"
     staging_dir="$TEMP_DIR/pbz-fix"
@@ -851,6 +888,10 @@ setup_steam_launch() {
         mv -f -- "$install_dir/$script_name.tmp" "$install_dir/$script_name"
     done
 
+    log "Applying or verifying the PBZ fix..."
+    install_or_repair_fix
+    prepare_save_link
+
     python3 "$install_dir/steam-launch-config.py" setup \
         --steam-root "$STEAM_ROOT" \
         --install-dir "$install_dir"
@@ -864,7 +905,7 @@ undo_steam_launch() {
     if ! detect_steam; then
         fail "Steam could not be found."
     fi
-    require_steam_closed
+    close_steam
     [[ -f "$install_dir/steam-launch-config.py" ]] ||
         fail "Steam launch setup files were not found in $install_dir."
 

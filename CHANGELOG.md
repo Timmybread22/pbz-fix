@@ -37,6 +37,11 @@ Initial release.
 - Prefer the app-manifest install path across Steam libraries, falling back to `common/PBZ` only when no app manifest exists.
 - Keep each game's original restore point associated with its game directory instead of selecting the newest home-directory backup.
 
+### Installer update — 2026-11-27 (v2.8)
+
+- Request a clean Steam shutdown, apply or verify the fix, and configure the launch option in one setup run.
+- Preserve the original Steam command and its arguments when the wrapper redirects the game executable.
+
 ### Installer update — 2026-11-24
 
 - Fixed downloading the latest release when the GitHub CLI is installed and authenticated.
