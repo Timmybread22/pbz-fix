@@ -29,7 +29,7 @@ Initial release.
 - Combined save-file checking with install/repair so the same menu option can be rerun after the first save.
 - Kept a separate save-repair command for users who only want to repair save files.
 
-### Installer update — Steam launch wrapper
+### Installer update — 2026-11-27 (v2.7)
 
 - Added a setup and undo flow for Steam's launch option, with the wrapper and installer downloaded from the same pinned commit.
 - Prompt before replacing existing launch options; back up and restore each affected Steam `localconfig.vdf`.
